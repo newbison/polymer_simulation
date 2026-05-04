@@ -271,10 +271,10 @@ class Simulation {
     this.time = 0;
     this.params = {
       initiatorCount: 10,
-      monomerACount: 500,
-      monomerBCount: 500,
-      r1: 1.5,
-      r2: 0.3,
+      monomerACount: 950,
+      monomerBCount: 50,
+      r1: 0.3,
+      r2: 3.0,
       rateMultiplier: 5.0,
       speedMultiplier: 5.0,
     };
@@ -950,7 +950,7 @@ class UI extends UIBase {
 
   _applyPreset(name) {
     const presets = {
-      '2eha-aa':  { r1: 1.5, r2: 0.3 },
+      '2eha-aa':  { r1: 0.3, r2: 3.0 },
       'ideal':    { r1: 1.0, r2: 1.0 },
       'alternating': { r1: 0.01, r2: 0.01 },
       'styrene-an': { r1: 0.4, r2: 0.04 },
