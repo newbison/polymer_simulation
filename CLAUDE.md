@@ -14,6 +14,11 @@ polymer_simulation/
 │   ├── renderer.js         ← Canvas 2D drawing + callout overlay
 │   ├── ui.js               ← control panel DOM + events
 │   └── bundle.js           ← all JS modules bundled for file:// compatibility
+├── .claude/skills/
+│   ├── close-session/      ← session shutdown: update docs, memory, changelog, push
+│   └── resume/             ← session startup: read docs, memory, changelog, git status
+├── CLAUDE.md
+├── CHANGELOG.md
 └── README.md
 ```
 
@@ -65,3 +70,12 @@ Four modules wired together in `js/main.js`:
 - Particle state is mutated in place — no immutability
 - `dt` is clamped to max 0.1s to avoid physics explosions on tab-away
 - Canvas uses `devicePixelRatio` scaling for sharp rendering
+
+## Session workflow
+
+Two project skills manage session continuity:
+
+- `/resume` — run at session start. Reads CLAUDE.md, CHANGELOG.md, session memory, and git status to catch up.
+- `/close-session` — run at session end. Updates CLAUDE.md, saves session memory, logs to CHANGELOG.md, commits and pushes to GitHub.
+
+Session memory is stored in `C:\Users\DELL\.claude\projects\D--coding-is-fun-polymer-simulation\memory\`.
