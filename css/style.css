@@ -156,3 +156,56 @@ button:hover { background: #2a2a4a; }
 #readouts dt { color: var(--text-secondary); }
 
 #readouts dd { text-align: right; font-variant-numeric: tabular-nums; }
+
+#landing {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sim-cards {
+  display: flex;
+  gap: 24px;
+  max-width: 700px;
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.sim-card {
+  display: block;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  width: 300px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.2s, transform 0.15s;
+}
+
+.sim-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.sim-card-icon {
+  font-size: 2rem;
+  margin-bottom: 12px;
+}
+
+.sim-card h2 {
+  font-size: 1rem;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.sim-card p {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}

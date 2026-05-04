@@ -1,4 +1,268 @@
 // ============================================================
+// lib/renderer.js
+// ============================================================
+class Renderer {
+  constructor(canvas, theme) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.theme = theme;
+    this.resize();
+    this._resizeHandler = () => this.resize();
+    window.addEventListener('resize', this._resizeHandler);
+  }
+
+  resize() {
+    const rect = this.canvas.parentElement.getBoundingClientRect();
+    this.canvas.width = rect.width * devicePixelRatio;
+    this.canvas.height = rect.height * devicePixelRatio;
+    this.ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    this.w = rect.width;
+    this.h = rect.height;
+  }
+
+  draw(particles) {
+    const ctx = this.ctx;
+    const { colors, radii, glowColors, bgColor } = this.theme;
+    ctx.clearRect(0, 0, this.w, this.h);
+
+    // Background
+    ctx.fillStyle = bgColor || colors.bg || '#0f0f23';
+    ctx.fillRect(0, 0, this.w, this.h);
+
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    const gridSize = 40;
+    for (let x = 0; x < this.w; x += gridSize) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, this.h); ctx.stroke();
+    }
+    for (let y = 0; y < this.h; y += gridSize) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(this.w, y); ctx.stroke();
+    }
+
+    // Draw bonds between chain segments
+    for (const p of particles) {
+      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
+        for (let i = 0; i < p.segments.length - 1; i++) {
+          const a = p.segments[i];
+          const b = p.segments[i + 1];
+          const alpha = p.type === 'chainRadical' ? 0.4 : 0.2;
+          const bondColor = colors.chainRadical || '#4ecdc4';
+          const deadColor = colors.deadChain || '#555';
+          ctx.strokeStyle = p.type === 'chainRadical'
+            ? `rgba(${this._hexToRgb(bondColor)},${alpha})`
+            : `rgba(${this._hexToRgb(deadColor)},${alpha})`;
+          ctx.lineWidth = p.type === 'chainRadical' ? 2.5 : 1.5;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw particles
+    for (const p of particles) {
+      const pos = p.type === 'chainRadical' || p.type === 'deadChain'
+        ? p.segments[p.segments.length - 1]
+        : p;
+
+      // Glow for radicals
+      if (glowColors && (p.type === 'primaryRadical' || p.type === 'chainRadical')) {
+        const glowColor = p.type === 'primaryRadical'
+          ? (glowColors.primaryRadical || 'rgba(255,107,107,0.6)')
+          : (glowColors.chainRadical || 'rgba(78,205,196,0.6)');
+        const r = radii?.[p.type] ?? (p.type === 'primaryRadical' ? 4 : 6);
+        const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, r * 3);
+        grad.addColorStop(0, glowColor);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, r * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Body
+      const r = radii?.[p.type] ?? 5;
+      const color = this._colorForParticle(p, colors);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw chain body segments
+      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
+        for (let i = 0; i < p.segments.length - 1; i++) {
+          const seg = p.segments[i];
+          const segColor = this._segmentColor(p, seg, i, colors);
+          ctx.fillStyle = segColor;
+          ctx.beginPath();
+          ctx.arc(seg.x, seg.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Head
+        const head = p.segments[p.segments.length - 1];
+        const headColor = this._segmentColor(p, head, p.segments.length - 1, colors);
+        ctx.fillStyle = headColor;
+        ctx.beginPath();
+        ctx.arc(head.x, head.y, radii?.[p.type] ?? 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  _colorForParticle(p, colors) {
+    if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length) {
+      const head = p.segments[p.segments.length - 1];
+      if (this.theme.segmentColor && head.monomerType !== undefined) {
+        return this.theme.segmentColor(head.monomerType, p.type);
+      }
+    }
+    return colors[p.type] || '#fff';
+  }
+
+  _segmentColor(p, seg, idx, colors) {
+    if (this.theme.segmentColor && seg.monomerType !== undefined) {
+      return this.theme.segmentColor(seg.monomerType, p.type);
+    }
+    return colors[p.type] || '#fff';
+  }
+
+  _hexToRgb(hex) {
+    if (hex.startsWith('#')) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `${r},${g},${b}`;
+    }
+    return '255,255,255';
+  }
+
+  drawCallout(title, drawFn) {
+    const calloutEl = document.getElementById('callout');
+    const titleEl = document.getElementById('callout-title');
+    const calloutCanvas = document.getElementById('callout-canvas');
+    const ctx = calloutCanvas.getContext('2d');
+
+    if (!drawFn) {
+      calloutEl.classList.add('hidden');
+      return;
+    }
+
+    calloutEl.classList.remove('hidden');
+    ctx.clearRect(0, 0, calloutCanvas.width, calloutCanvas.height);
+
+    if (title) {
+      titleEl.textContent = title;
+    }
+
+    drawFn(ctx, calloutCanvas.width, calloutCanvas.height);
+  }
+
+  _scheduleCalloutClear() {
+    if (this._calloutTimer) clearTimeout(this._calloutTimer);
+    this._calloutTimer = setTimeout(() => {
+      document.getElementById('callout').classList.add('hidden');
+    }, 2500);
+  }
+
+  dispose() {
+    window.removeEventListener('resize', this._resizeHandler);
+  }
+}
+
+// ============================================================
+// lib/ui-base.js
+// ============================================================
+class UIBase {
+  constructor() {
+    this._callbacks = {};
+  }
+
+  on(event, fn) {
+    this._callbacks[event] = fn;
+  }
+
+  _cb(event, data) {
+    if (this._callbacks[event]) this._callbacks[event](data);
+  }
+
+  // Bind a button element to a callback event
+  bindButton(id, event) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('click', () => this._cb(event));
+    }
+  }
+
+  // Bind a slider: sets up display value update and param-change callback
+  // onChange receives the parsed slider value
+  bindSlider(id, valueId, format, paramKey, onChange) {
+    const slider = document.getElementById(id);
+    const display = document.getElementById(valueId);
+    if (!slider) return;
+
+    slider.addEventListener('input', () => {
+      const val = parseFloat(slider.value);
+      if (display) {
+        display.textContent = typeof format === 'function' ? format(val) : val + format;
+      }
+      if (onChange) {
+        onChange(paramKey, val);
+      }
+      this._cb('paramChange', this._getParams());
+    });
+  }
+
+  // Set initial display value for a slider
+  setSliderValue(id, valueId, value, format) {
+    const display = document.getElementById(valueId);
+    if (display) {
+      display.textContent = typeof format === 'function' ? format(value) : value + format;
+    }
+  }
+
+  // Register a readout spec: { id, key, format }
+  setReadoutSpec(specs) {
+    this._readoutSpecs = specs;
+  }
+
+  updateReadouts(data) {
+    if (!this._readoutSpecs) return;
+    for (const spec of this._readoutSpecs) {
+      const el = document.getElementById(spec.id);
+      if (!el) continue;
+      const val = data[spec.key];
+      if (val === undefined || val === null) {
+        el.textContent = '—';
+      } else if (spec.format) {
+        el.textContent = typeof spec.format === 'function' ? spec.format(val) : val;
+      } else {
+        el.textContent = String(val);
+      }
+    }
+  }
+
+  // Badge toggling
+  setBadge(id, active) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (active) {
+      el.classList.add('active');
+      el.textContent = el.textContent.replace('○', '●');
+    } else {
+      el.classList.remove('active');
+      el.textContent = el.textContent.replace('●', '○');
+    }
+  }
+
+  // Override in subclass to collect all param values
+  _getParams() {
+    return {};
+  }
+}
+
+// ============================================================
 // simulation.js
 // ============================================================
 class Simulation {
@@ -8,7 +272,7 @@ class Simulation {
     this.params = {
       initiatorCount: 10,
       monomerCount: 1000,
-      rateMultiplier: 10.0,
+      rateMultiplier: 5.0,
       speedMultiplier: 5.0,
     };
     this.stats = {
@@ -18,7 +282,7 @@ class Simulation {
       deadChains: 0,
       freeMonomers: 0,
     };
-    this.calloutEvent = null;
+    this.calloutEvent = null;  // { type, data } for the current frame
     this._canvasW = 800;
     this._canvasH = 500;
   }
@@ -93,11 +357,13 @@ class Simulation {
 
   _processInitiation(dt) {
     const rate = this.params.rateMultiplier;
-    const kd = 25.0 * rate;
+    const kd = 25.0 * rate; // initiator decomposition probability per second
 
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       if (p.type !== 'initiator') continue;
+
+      // Probability of decomposition this frame
       if (Math.random() < kd * dt) {
         this._decomposeInitiator(i);
       }
@@ -109,6 +375,7 @@ class Simulation {
     const x = initiator.x;
     const y = initiator.y;
 
+    // Remove initiator, add 2 primary radicals
     this.particles.splice(idx, 1);
 
     for (let i = 0; i < 2; i++) {
@@ -122,13 +389,37 @@ class Simulation {
       });
     }
 
-    this.calloutEvent = { type: 'initiation', time: this.time };
+    this.calloutEvent = {
+      title: 'Initiation: I₂ → 2 I•',
+      drawFn: (ctx, w, h) => {
+        const cx = w / 2, cy = h / 2;
+        ctx.fillStyle = 'rgba(255,217,61,0.4)';
+        ctx.beginPath(); ctx.arc(cx - 8, cy, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 8, cy, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ff6b6b';
+        ctx.beginPath(); ctx.arc(cx - 22, cy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 22, cy, 5, 0, Math.PI * 2); ctx.fill();
+        [cx - 22, cx + 22].forEach(rx => {
+          const grad = ctx.createRadialGradient(rx, cy, 0, rx, cy, 10);
+          grad.addColorStop(0, 'rgba(255,107,107,0.5)'); grad.addColorStop(1, 'transparent');
+          ctx.fillStyle = grad;
+          ctx.beginPath(); ctx.arc(rx, cy, 10, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px sans-serif';
+        ctx.fillText('→', cx - 4, cy + 20);
+      },
+    };
   }
 
   _processRadicalCapture(dt) {
     const rate = this.params.rateMultiplier;
-    const captureDist = 20;
-    const kCapture = 12.5 * rate;
+    const captureDist = 20; // pixels, generous for visual clarity
+    const kCapture = 12.5 * rate; // high probability — diffusion-limited
 
     const primaryRadicals = [];
     const monomers = [];
@@ -150,6 +441,7 @@ class Simulation {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < captureDist && Math.random() < kCapture * dt) {
+          // Convert to chain radical of length 1
           monomer.consumed = true;
           this.particles[ri] = {
             type: 'chainRadical',
@@ -161,8 +453,33 @@ class Simulation {
             vy: (Math.random() - 0.5) * 1.5,
             radius: 6,
           };
-          this.calloutEvent = { type: 'firstPropagation', time: this.time };
-          break;
+          this.calloutEvent = {
+            title: 'Initiation: R• + M → RM•',
+            drawFn: (ctx, w, h) => {
+              const cx = w / 2, cy = h / 2;
+              ctx.fillStyle = '#777';
+              ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+              ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.stroke();
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx - 15, cy, 7, 0, Math.PI * 2); ctx.fill();
+              const grad = ctx.createRadialGradient(cx - 15, cy, 0, cx - 15, cy, 12);
+              grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
+              ctx.fillStyle = grad;
+              ctx.beginPath(); ctx.arc(cx - 15, cy, 12, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = '#fff';
+              ctx.font = '16px sans-serif';
+              ctx.fillText('→', cx + 2, cy + 5);
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx + 50, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = '#4ecdc4'; ctx.lineWidth = 1;
+              ctx.beginPath(); ctx.moveTo(cx + 50, cy - 8); ctx.lineTo(cx + 50, cy + 8); ctx.stroke();
+              ctx.fillStyle = '#fff';
+              ctx.font = '9px sans-serif';
+              ctx.fillText('n+1', cx + 42, cy - 12);
+            },
+          };
+          break; // each radical captures one monomer per frame
         }
       }
     }
@@ -170,7 +487,7 @@ class Simulation {
 
   _processPropagation(dt) {
     const rate = this.params.rateMultiplier;
-    const kp = 12.5 * rate;
+    const kp = 12.5 * rate; // propagation probability
     const reactDist = 18;
 
     const chainRadicals = [];
@@ -196,12 +513,38 @@ class Simulation {
 
         if (dist < reactDist && Math.random() < kp * dt) {
           monomer.consumed = true;
+          // Add monomer position as new head
           chain.segments.push({ x: monomer.x, y: monomer.y });
           const mob = this._chainMobility(chain.segments.length);
           chain.vx += (Math.random() - 0.5) * 0.5 * mob;
           chain.vy += (Math.random() - 0.5) * 0.5 * mob;
-          this.calloutEvent = { type: 'propagation', time: this.time, chainLen: chain.segments.length };
-          break;
+          this.calloutEvent = {
+            title: `Propagation: chain + M (n=${chain.segments.length})`,
+            drawFn: (ctx, w, h) => {
+              const cx = w / 2, cy = h / 2;
+              ctx.fillStyle = '#777';
+              ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+              ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.stroke();
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx - 15, cy, 7, 0, Math.PI * 2); ctx.fill();
+              const grad = ctx.createRadialGradient(cx - 15, cy, 0, cx - 15, cy, 12);
+              grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
+              ctx.fillStyle = grad;
+              ctx.beginPath(); ctx.arc(cx - 15, cy, 12, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = '#fff';
+              ctx.font = '16px sans-serif';
+              ctx.fillText('→', cx + 2, cy + 5);
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx + 50, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = '#4ecdc4'; ctx.lineWidth = 1;
+              ctx.beginPath(); ctx.moveTo(cx + 50, cy - 8); ctx.lineTo(cx + 50, cy + 8); ctx.stroke();
+              ctx.fillStyle = '#fff';
+              ctx.font = '9px sans-serif';
+              ctx.fillText('n+1', cx + 42, cy - 12);
+            },
+          };
+          break; // one propagation per chain per frame
         }
       }
     }
@@ -239,7 +582,9 @@ class Simulation {
           terminated.add(ai);
           terminated.add(bi);
 
+          // 50% combination, 50% disproportionation
           if (Math.random() < 0.5) {
+            // Combination: join chains into one dead chain
             const combinedSegments = [
               ...chainA.segments,
               ...chainB.segments.slice().reverse(),
@@ -252,6 +597,7 @@ class Simulation {
               radius: 5,
             });
           } else {
+            // Disproportionation: both become dead chains
             this.particles.push({
               type: 'deadChain',
               segments: [...chainA.segments],
@@ -268,12 +614,36 @@ class Simulation {
             });
           }
 
-          this.calloutEvent = { type: 'termination', time: this.time };
-          break;
+          this.calloutEvent = {
+            title: 'Termination',
+            drawFn: (ctx, w, h) => {
+              const cx = w / 2, cy = h / 2;
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx - 20, cy - 5, 7, 0, Math.PI * 2); ctx.fill();
+              ctx.beginPath(); ctx.arc(cx + 20, cy + 5, 7, 0, Math.PI * 2); ctx.fill();
+              [cx - 20, cx + 20].forEach((rx, i) => {
+                const grad = ctx.createRadialGradient(rx, cy - 5 + i * 10, 0, rx, cy - 5 + i * 10, 10);
+                grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(rx, cy - 5 + i * 10, 10, 0, Math.PI * 2); ctx.fill();
+              });
+              ctx.strokeStyle = '#ff6b6b';
+              ctx.lineWidth = 2;
+              ctx.beginPath(); ctx.moveTo(cx + 5, cy - 15); ctx.lineTo(cx + 15, cy - 5); ctx.stroke();
+              ctx.beginPath(); ctx.moveTo(cx + 15, cy - 15); ctx.lineTo(cx + 5, cy - 5); ctx.stroke();
+              ctx.fillStyle = '#555';
+              ctx.beginPath(); ctx.arc(cx + 45, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = '#fff';
+              ctx.font = '9px sans-serif';
+              ctx.fillText('dead', cx + 35, cy - 14);
+            },
+          };
+          break; // one termination pair per frame check
         }
       }
     }
 
+    // Remove terminated chain radicals (highest indices first)
     const toRemove = [...terminated].sort((a, b) => b - a);
     for (const idx of toRemove) {
       this.particles.splice(idx, 1);
@@ -326,11 +696,15 @@ class Simulation {
         ? this._chainMobility(p.segments.length)
         : 1;
 
+      // Brownian perturbation — scaled by mobility
       p.vx += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
       p.vy += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
+
+      // Damping
       p.vx *= 0.98;
       p.vy *= 0.98;
 
+      // Speed cap — scaled by mobility
       const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
       const maxSpeed = 3 * mobility;
       if (speed > maxSpeed) {
@@ -344,11 +718,13 @@ class Simulation {
         head.x += p.vx * dt * 60;
         head.y += p.vy * dt * 60;
 
+        // Bounce head off walls
         if (head.x < 5) { head.x = 5; p.vx *= -0.5; }
         if (head.x > w - 5) { head.x = w - 5; p.vx *= -0.5; }
         if (head.y < 5) { head.y = 5; p.vy *= -0.5; }
         if (head.y > h - 5) { head.y = h - 5; p.vy *= -0.5; }
 
+        // Body follows leader with lag
         for (let i = 0; i < p.segments.length - 1; i++) {
           const seg = p.segments[i];
           const leader = p.segments[i + 1];
@@ -366,6 +742,7 @@ class Simulation {
         p.x += p.vx * dt * 60;
         p.y += p.vy * dt * 60;
 
+        // Bounce off walls
         if (p.x < p.radius) { p.x = p.radius; p.vx *= -0.5; }
         if (p.x > w - p.radius) { p.x = w - p.radius; p.vx *= -0.5; }
         if (p.y < p.radius) { p.y = p.radius; p.vy *= -0.5; }
@@ -384,240 +761,40 @@ class Simulation {
 }
 
 // ============================================================
-// renderer.js
+// theme.js
 // ============================================================
-const COLORS = {
-  initiator: '#ffd93d',
-  primaryRadical: '#ff6b6b',
-  monomer: '#777',
-  chainRadical: '#4ecdc4',
-  deadChain: '#555',
-  bond: 'rgba(255,255,255,0.3)',
-  bg: '#0f0f23',
+const THEME = {
+  bgColor: '#0f0f23',
+  colors: {
+    initiator: '#ffd93d',
+    primaryRadical: '#ff6b6b',
+    monomer: '#777',
+    chainRadical: '#4ecdc4',
+    deadChain: '#555',
+    bg: '#0f0f23',
+  },
+  radii: {
+    initiator: 7,
+    primaryRadical: 4,
+    monomer: 5,
+    chainRadical: 6,
+    deadChain: 5,
+  },
+  glowColors: {
+    primaryRadical: 'rgba(255,107,107,0.6)',
+    chainRadical: 'rgba(78,205,196,0.6)',
+  },
 };
-
-const RADII = {
-  initiator: 7,
-  primaryRadical: 4,
-  monomer: 5,
-  chainRadical: 6,
-  deadChain: 5,
-};
-
-const GLOW_COLORS = {
-  primaryRadical: 'rgba(255,107,107,0.6)',
-  chainRadical: 'rgba(78,205,196,0.6)',
-};
-
-class Renderer {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.resize();
-    this._resizeHandler = () => this.resize();
-    window.addEventListener('resize', this._resizeHandler);
-  }
-
-  resize() {
-    const rect = this.canvas.parentElement.getBoundingClientRect();
-    this.canvas.width = rect.width * devicePixelRatio;
-    this.canvas.height = rect.height * devicePixelRatio;
-    this.ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-    this.w = rect.width;
-    this.h = rect.height;
-  }
-
-  draw(particles) {
-    const ctx = this.ctx;
-    ctx.clearRect(0, 0, this.w, this.h);
-
-    ctx.fillStyle = COLORS.bg;
-    ctx.fillRect(0, 0, this.w, this.h);
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-    ctx.lineWidth = 1;
-    const gridSize = 40;
-    for (let x = 0; x < this.w; x += gridSize) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, this.h); ctx.stroke();
-    }
-    for (let y = 0; y < this.h; y += gridSize) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(this.w, y); ctx.stroke();
-    }
-
-    for (const p of particles) {
-      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
-        for (let i = 0; i < p.segments.length - 1; i++) {
-          const a = p.segments[i];
-          const b = p.segments[i + 1];
-          const alpha = p.type === 'chainRadical' ? 0.4 : 0.2;
-          ctx.strokeStyle = p.type === 'chainRadical'
-            ? `rgba(78,205,196,${alpha})`
-            : `rgba(150,150,150,${alpha})`;
-          ctx.lineWidth = p.type === 'chainRadical' ? 2.5 : 1.5;
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
-        }
-      }
-    }
-
-    for (const p of particles) {
-      const pos = p.type === 'chainRadical' || p.type === 'deadChain'
-        ? p.segments[p.segments.length - 1]
-        : p;
-
-      if (p.type === 'primaryRadical' || p.type === 'chainRadical') {
-        const glowColor = p.type === 'primaryRadical'
-          ? GLOW_COLORS.primaryRadical
-          : GLOW_COLORS.chainRadical;
-        const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, RADII[p.type] * 3);
-        grad.addColorStop(0, glowColor);
-        grad.addColorStop(1, 'transparent');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, RADII[p.type] * 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.fillStyle = COLORS[p.type];
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, RADII[p.type], 0, Math.PI * 2);
-      ctx.fill();
-
-      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
-        for (let i = 0; i < p.segments.length - 1; i++) {
-          const seg = p.segments[i];
-          const color = p.type === 'chainRadical' ? COLORS.chainRadical : COLORS.deadChain;
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(seg.x, seg.y, 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        const head = p.segments[p.segments.length - 1];
-        ctx.fillStyle = p.type === 'chainRadical' ? COLORS.chainRadical : COLORS.deadChain;
-        ctx.beginPath();
-        ctx.arc(head.x, head.y, RADII[p.type], 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  }
-
-  drawCallout(event) {
-    const calloutEl = document.getElementById('callout');
-    const titleEl = document.getElementById('callout-title');
-    const calloutCanvas = document.getElementById('callout-canvas');
-    const ctx = calloutCanvas.getContext('2d');
-
-    if (!event) {
-      calloutEl.classList.add('hidden');
-      return;
-    }
-
-    calloutEl.classList.remove('hidden');
-    ctx.clearRect(0, 0, calloutCanvas.width, calloutCanvas.height);
-
-    const w = calloutCanvas.width;
-    const h = calloutCanvas.height;
-
-    if (event.type === 'initiation') {
-      titleEl.textContent = 'Initiation: I₂ → 2 I•';
-      const cx = w / 2, cy = h / 2;
-      ctx.fillStyle = 'rgba(255,217,61,0.4)';
-      ctx.beginPath(); ctx.arc(cx - 8, cy, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(cx + 8, cy, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = '#ff6b6b';
-      ctx.beginPath(); ctx.arc(cx - 22, cy, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(cx + 22, cy, 5, 0, Math.PI * 2); ctx.fill();
-      [cx - 22, cx + 22].forEach(rx => {
-        const grad = ctx.createRadialGradient(rx, cy, 0, rx, cy, 10);
-        grad.addColorStop(0, 'rgba(255,107,107,0.5)'); grad.addColorStop(1, 'transparent');
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(rx, cy, 10, 0, Math.PI * 2); ctx.fill();
-      });
-      ctx.fillStyle = '#fff';
-      ctx.font = '12px sans-serif';
-      ctx.fillText('→', cx - 4, cy + 20);
-    }
-
-    if (event.type === 'propagation' || event.type === 'firstPropagation') {
-      titleEl.textContent = event.type === 'firstPropagation'
-        ? 'Initiation: R• + M → RM•'
-        : `Propagation: chain + M (n=${event.chainLen || '?'})`;
-      const cx = w / 2, cy = h / 2;
-      ctx.fillStyle = '#777';
-      ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#4ecdc4';
-      ctx.beginPath(); ctx.arc(cx - 15, cy, 7, 0, Math.PI * 2); ctx.fill();
-      const grad = ctx.createRadialGradient(cx - 15, cy, 0, cx - 15, cy, 12);
-      grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(cx - 15, cy, 12, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.font = '16px sans-serif';
-      ctx.fillText('→', cx + 2, cy + 5);
-      ctx.fillStyle = '#4ecdc4';
-      ctx.beginPath(); ctx.arc(cx + 50, cy, 8, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#4ecdc4'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(cx + 50, cy - 8); ctx.lineTo(cx + 50, cy + 8); ctx.stroke();
-      ctx.fillStyle = '#fff';
-      ctx.font = '9px sans-serif';
-      ctx.fillText('n+1', cx + 42, cy - 12);
-    }
-
-    if (event.type === 'termination') {
-      titleEl.textContent = 'Termination';
-      const cx = w / 2, cy = h / 2;
-      ctx.fillStyle = '#4ecdc4';
-      ctx.beginPath(); ctx.arc(cx - 20, cy - 5, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(cx + 20, cy + 5, 7, 0, Math.PI * 2); ctx.fill();
-      [cx - 20, cx + 20].forEach((rx, i) => {
-        const grad = ctx.createRadialGradient(rx, cy - 5 + i * 10, 0, rx, cy - 5 + i * 10, 10);
-        grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(rx, cy - 5 + i * 10, 10, 0, Math.PI * 2); ctx.fill();
-      });
-      ctx.strokeStyle = '#ff6b6b';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(cx + 5, cy - 15); ctx.lineTo(cx + 15, cy - 5); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(cx + 15, cy - 15); ctx.lineTo(cx + 5, cy - 5); ctx.stroke();
-      ctx.fillStyle = '#555';
-      ctx.beginPath(); ctx.arc(cx + 45, cy, 8, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.font = '9px sans-serif';
-      ctx.fillText('dead', cx + 35, cy - 14);
-    }
-  }
-
-  _scheduleCalloutClear() {
-    if (this._calloutTimer) clearTimeout(this._calloutTimer);
-    this._calloutTimer = setTimeout(() => {
-      document.getElementById('callout').classList.add('hidden');
-    }, 2500);
-  }
-
-  dispose() {
-    window.removeEventListener('resize', this._resizeHandler);
-  }
-}
 
 // ============================================================
 // ui.js
 // ============================================================
-class UI {
-  constructor() {
-    this._callbacks = {};
-    this._getElements();
-    this._bindEvents();
-  }
 
-  _getElements() {
+
+class UI extends UIBase {
+  constructor() {
+    super();
+
     this.btnPlay = document.getElementById('btn-play');
     this.btnPause = document.getElementById('btn-pause');
     this.btnReset = document.getElementById('btn-reset');
@@ -628,29 +805,44 @@ class UI {
     this.badgeInit = document.getElementById('badge-initiation');
     this.badgeProp = document.getElementById('badge-propagation');
     this.badgeTerm = document.getElementById('badge-termination');
+
+    this._bindEvents();
+
+    this.setReadoutSpec([
+      { id: 'ro-time',       key: 'time',         format: v => v.toFixed(1) + 's' },
+      { id: 'ro-conversion', key: 'conversion',   format: v => v + '%' },
+      { id: 'ro-mn',         key: 'mn',           format: v => v || '—' },
+      { id: 'ro-chains',     key: 'activeChains', format: v => String(v) },
+      { id: 'ro-dead',       key: 'deadChains',   format: v => String(v) },
+      { id: 'ro-monomers',   key: 'freeMonomers',  format: v => String(v) },
+    ]);
   }
 
   _bindEvents() {
-    this.btnPlay.addEventListener('click', () => this._cb('play'));
-    this.btnPause.addEventListener('click', () => this._cb('pause'));
-    this.btnReset.addEventListener('click', () => this._cb('reset'));
+    this.bindButton('btn-play', 'play');
+    this.bindButton('btn-pause', 'pause');
+    this.bindButton('btn-reset', 'reset');
 
-    this.sliderInitiator.addEventListener('input', () => {
-      document.getElementById('val-initiator').textContent = this.sliderInitiator.value;
-      this._cb('paramChange', this._getParams());
-    });
-    this.sliderMonomer.addEventListener('input', () => {
-      document.getElementById('val-monomer').textContent = this.sliderMonomer.value;
-      this._cb('paramChange', this._getParams());
-    });
-    this.sliderRate.addEventListener('input', () => {
-      document.getElementById('val-rate').textContent = parseFloat(this.sliderRate.value).toFixed(1) + '×';
-      this._cb('paramChange', this._getParams());
-    });
-    this.sliderSpeed.addEventListener('input', () => {
-      document.getElementById('val-speed').textContent = parseFloat(this.sliderSpeed.value) + '×';
-      this._cb('speedChange', parseFloat(this.sliderSpeed.value));
-    });
+    this.bindSlider('slider-initiator', 'val-initiator', '', 'initiatorCount',
+      () => {}
+    );
+    this.bindSlider('slider-monomer', 'val-monomer', '', 'monomerCount',
+      () => {}
+    );
+    this.bindSlider('slider-rate', 'val-rate', '×', 'rateMultiplier',
+      (key, val) => document.getElementById('val-rate').textContent = val.toFixed(1) + '×'
+    );
+
+    // Speed slider — fires speedChange
+    const speedSlider = document.getElementById('slider-speed');
+    const speedDisplay = document.getElementById('val-speed');
+    if (speedSlider) {
+      speedSlider.addEventListener('input', () => {
+        const val = parseFloat(speedSlider.value);
+        speedDisplay.textContent = val + '×';
+        this._cb('speedChange', val);
+      });
+    }
   }
 
   _getParams() {
@@ -661,49 +853,27 @@ class UI {
     };
   }
 
-  on(event, fn) {
-    this._callbacks[event] = fn;
-  }
-
-  _cb(event, data) {
-    if (this._callbacks[event]) this._callbacks[event](data);
-  }
-
-  updateReadouts(stats) {
-    document.getElementById('ro-time').textContent = stats.time.toFixed(1) + 's';
-    document.getElementById('ro-conversion').textContent = stats.conversion + '%';
-    document.getElementById('ro-mn').textContent = stats.mn || '—';
-    document.getElementById('ro-chains').textContent = stats.activeChains;
-    document.getElementById('ro-dead').textContent = stats.deadChains;
-    document.getElementById('ro-monomers').textContent = stats.freeMonomers;
-  }
-
   updateStageBadges(stats) {
     const hasActiveChains = stats.activeChains > 0;
     const hasDeadChains = stats.deadChains > 0;
 
-    this._setBadge(this.badgeInit, !hasActiveChains && !hasDeadChains);
-    this._setBadge(this.badgeProp, hasActiveChains && stats.conversion < 80);
-    this._setBadge(this.badgeTerm, hasDeadChains > 0 || stats.conversion >= 80);
-  }
-
-  _setBadge(el, active) {
-    if (active) {
-      el.classList.add('active');
-      el.textContent = el.textContent.replace('○', '●');
-    } else {
-      el.classList.remove('active');
-      el.textContent = el.textContent.replace('●', '○');
-    }
+    this.setBadge('badge-initiation', !hasActiveChains && !hasDeadChains);
+    this.setBadge('badge-propagation', hasActiveChains && stats.conversion < 80);
+    this.setBadge('badge-termination', hasDeadChains > 0 || stats.conversion >= 80);
   }
 }
 
 // ============================================================
 // main.js
 // ============================================================
+
+
+
+
+
 const canvas = document.getElementById('sim-canvas');
 const sim = new Simulation();
-const renderer = new Renderer(canvas);
+const renderer = new Renderer(canvas, THEME);
 const ui = new UI();
 
 function syncSize() {
@@ -724,7 +894,7 @@ function loop(timestamp) {
   sim.tick(dt);
 
   if (sim.calloutEvent) {
-    renderer.drawCallout(sim.calloutEvent);
+    renderer.drawCallout(sim.calloutEvent.title, sim.calloutEvent.drawFn);
     renderer._scheduleCalloutClear();
     sim.calloutEvent = null;
   }
