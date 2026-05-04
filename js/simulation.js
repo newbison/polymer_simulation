@@ -39,12 +39,29 @@ export class Simulation {
   _initParticles() {
     const { initiatorCount, monomerCount } = this.params;
     this.particles = [];
+    const minDist = 15;
+
+    const tooClose = (x, y, existing) => {
+      for (const p of existing) {
+        const px = p.type === 'chainRadical' || p.type === 'deadChain'
+          ? p.segments[p.segments.length - 1].x : p.x;
+        const py = p.type === 'chainRadical' || p.type === 'deadChain'
+          ? p.segments[p.segments.length - 1].y : p.y;
+        if (Math.hypot(x - px, y - py) < minDist) return true;
+      }
+      return false;
+    };
 
     for (let i = 0; i < initiatorCount; i++) {
+      let x, y, attempts = 0;
+      do {
+        x = 20 + Math.random() * (this._canvasW - 40);
+        y = 20 + Math.random() * (this._canvasH - 40);
+        attempts++;
+      } while (tooClose(x, y, this.particles) && attempts < 50);
+
       this.particles.push({
-        type: 'initiator',
-        x: 20 + Math.random() * (this._canvasW - 40),
-        y: 20 + Math.random() * (this._canvasH - 40),
+        type: 'initiator', x, y,
         vx: (Math.random() - 0.5) * 1.5,
         vy: (Math.random() - 0.5) * 1.5,
         radius: 7,
@@ -52,10 +69,15 @@ export class Simulation {
     }
 
     for (let i = 0; i < monomerCount; i++) {
+      let x, y, attempts = 0;
+      do {
+        x = Math.random() * this._canvasW;
+        y = Math.random() * this._canvasH;
+        attempts++;
+      } while (tooClose(x, y, this.particles) && attempts < 100);
+
       this.particles.push({
-        type: 'monomer',
-        x: Math.random() * this._canvasW,
-        y: Math.random() * this._canvasH,
+        type: 'monomer', x, y,
         vx: (Math.random() - 0.5) * 1.0,
         vy: (Math.random() - 0.5) * 1.0,
         radius: 5,

@@ -47,17 +47,33 @@ export class Renderer {
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, this.w, this.h);
 
-    // Draw bonds between chain segments first (below particles)
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    const gridSize = 40;
+    for (let x = 0; x < this.w; x += gridSize) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, this.h); ctx.stroke();
+    }
+    for (let y = 0; y < this.h; y += gridSize) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(this.w, y); ctx.stroke();
+    }
+
+    // Draw bonds between chain segments
     for (const p of particles) {
       if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
-        ctx.strokeStyle = COLORS.bond;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(p.segments[0].x, p.segments[0].y);
-        for (let i = 1; i < p.segments.length; i++) {
-          ctx.lineTo(p.segments[i].x, p.segments[i].y);
+        for (let i = 0; i < p.segments.length - 1; i++) {
+          const a = p.segments[i];
+          const b = p.segments[i + 1];
+          const alpha = p.type === 'chainRadical' ? 0.4 : 0.2;
+          ctx.strokeStyle = p.type === 'chainRadical'
+            ? `rgba(78,205,196,${alpha})`
+            : `rgba(150,150,150,${alpha})`;
+          ctx.lineWidth = p.type === 'chainRadical' ? 2.5 : 1.5;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
         }
-        ctx.stroke();
       }
     }
 
@@ -87,16 +103,17 @@ export class Renderer {
       ctx.arc(pos.x, pos.y, RADII[p.type], 0, Math.PI * 2);
       ctx.fill();
 
-      // Chain body segments (smaller dots)
+      // Draw chain body segments
       if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
-        ctx.fillStyle = p.type === 'chainRadical' ? COLORS.chainRadical : COLORS.deadChain;
         for (let i = 0; i < p.segments.length - 1; i++) {
           const seg = p.segments[i];
+          const color = p.type === 'chainRadical' ? COLORS.chainRadical : COLORS.deadChain;
+          ctx.fillStyle = color;
           ctx.beginPath();
           ctx.arc(seg.x, seg.y, 3, 0, Math.PI * 2);
           ctx.fill();
         }
-        // Head dot
+        // Head with distinct color
         const head = p.segments[p.segments.length - 1];
         ctx.fillStyle = p.type === 'chainRadical' ? COLORS.chainRadical : COLORS.deadChain;
         ctx.beginPath();
