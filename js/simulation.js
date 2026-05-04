@@ -66,6 +66,87 @@ export class Simulation {
     this._updateStats();
   }
 
+  _processInitiation(dt) {
+    const rate = this.params.rateMultiplier;
+    const kd = 0.02 * rate; // initiator decomposition probability per second
+
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      if (p.type !== 'initiator') continue;
+
+      // Probability of decomposition this frame
+      if (Math.random() < kd * dt) {
+        this._decomposeInitiator(i);
+      }
+    }
+  }
+
+  _decomposeInitiator(idx) {
+    const initiator = this.particles[idx];
+    const x = initiator.x;
+    const y = initiator.y;
+
+    // Remove initiator, add 2 primary radicals
+    this.particles.splice(idx, 1);
+
+    for (let i = 0; i < 2; i++) {
+      this.particles.push({
+        type: 'primaryRadical',
+        x: x + (Math.random() - 0.5) * 6,
+        y: y + (Math.random() - 0.5) * 6,
+        vx: (Math.random() - 0.5) * 2,
+        vy: (Math.random() - 0.5) * 2,
+        radius: 4,
+      });
+    }
+
+    this.calloutEvent = { type: 'initiation', time: this.time };
+  }
+
+  _processRadicalCapture(dt) {
+    const rate = this.params.rateMultiplier;
+    const captureDist = 20; // pixels, generous for visual clarity
+    const kCapture = 0.5 * rate; // high probability — diffusion-limited
+
+    const primaryRadicals = [];
+    const monomers = [];
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      if (p.type === 'primaryRadical') primaryRadicals.push(i);
+      else if (p.type === 'monomer' && !p.consumed) monomers.push(i);
+    }
+
+    for (const ri of primaryRadicals) {
+      const radical = this.particles[ri];
+      for (const mi of monomers) {
+        const monomer = this.particles[mi];
+        if (monomer.consumed) continue;
+
+        const dx = radical.x - monomer.x;
+        const dy = radical.y - monomer.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < captureDist && Math.random() < kCapture * dt) {
+          // Convert to chain radical of length 1
+          monomer.consumed = true;
+          this.particles[ri] = {
+            type: 'chainRadical',
+            segments: [
+              { x: monomer.x, y: monomer.y },
+              { x: radical.x, y: radical.y },
+            ],
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: (Math.random() - 0.5) * 1.5,
+            radius: 6,
+          };
+          this.calloutEvent = { type: 'firstPropagation', time: this.time };
+          break; // each radical captures one monomer per frame
+        }
+      }
+    }
+  }
+
   _updateStats() {
     const totalMonomerInit = this.params.monomerCount;
     const free = this.particles.filter(p => p.type === 'monomer' && !p.consumed).length;
@@ -88,6 +169,8 @@ export class Simulation {
 
     this.time += scaledDt;
     this._moveParticles(scaledDt);
+    this._processInitiation(scaledDt);
+    this._processRadicalCapture(scaledDt);
     this._updateStats();
   }
 
