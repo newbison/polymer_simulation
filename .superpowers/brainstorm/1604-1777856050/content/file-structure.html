@@ -1,0 +1,65 @@
+<h2>File Structure &amp; Development Approach</h2>
+<p class="subtitle">Minimal, flat structure — no build tools, no frameworks</p>
+
+<div style="display:flex;gap:2rem;margin:2rem 0;">
+<div style="flex:1;">
+<h3>Project Tree</h3>
+<pre style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:1rem;font-size:13px;line-height:1.8;color:var(--text-primary);">
+polymer_simulation/
+├── index.html          ← entry point
+├── css/
+│   └── style.css       ← all styles
+├── js/
+│   ├── main.js         ← loop + wiring
+│   ├── simulation.js   ← particle system + kinetics
+│   ├── renderer.js     ← Canvas drawing
+│   └── ui.js           ← control panel + events
+└── README.md           ← how to run &amp; use
+</pre>
+</div>
+<div style="flex:1;">
+<h3>Key Details</h3>
+<table style="width:100%;font-size:0.9rem;">
+<tr><td style="padding:4px 0;color:var(--text-secondary);">Dependencies</td><td style="padding:4px 0;"><b>Zero</b> — vanilla JS, ES modules</td></tr>
+<tr><td style="padding:4px 0;color:var(--text-secondary);">Canvas API</td><td style="padding:4px 0;">2D context, no WebGL needed</td></tr>
+<tr><td style="padding:4px 0;color:var(--text-secondary);">Run locally</td><td style="padding:4px 0;">Open <code>index.html</code> in browser</td></tr>
+<tr><td style="padding:4px 0;color:var(--text-secondary);">Share</td><td style="padding:4px 0;">Host on any static server (GitHub Pages, Netlify)</td></tr>
+<tr><td style="padding:4px 0;color:var(--text-secondary);">Target perf</td><td style="padding:4px 0;">Smooth at 200+ particles on any device</td></tr>
+</table>
+</div>
+</div>
+
+<h3>Development Order</h3>
+<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+<ol style="margin:0;padding-left:1.5rem;line-height:2;font-size:0.95rem;">
+  <li><b>Scaffold</b> — HTML structure, CSS layout, dark theme</li>
+  <li><b>Renderer first</b> — get particles drawing on Canvas with Brownian motion (no reactions yet)</li>
+  <li><b>Simulation core</b> — initiator decomposition, propagation, termination with proximity rules</li>
+  <li><b>UI wiring</b> — sliders → params, play/pause/reset, live readouts</li>
+  <li><b>Callout overlay</b> — ball-and-stick inset for key reaction events</li>
+  <li><b>Polish</b> — colors, glow effects, chain visualization, transitions</li>
+</ol>
+</div>
+
+<h3 style="margin-top:2rem;">Design Summary</h3>
+<table style="width:100%;border-collapse:collapse;font-size:0.92rem;">
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:6px;color:var(--text-secondary);">Audience</td><td style="padding:6px;">Students — educational</td>
+</tr>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:6px;color:var(--text-secondary);">Visualization</td><td style="padding:6px;">Hybrid — schematic canvas + ball-and-stick callouts</td>
+</tr>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:6px;color:var(--text-secondary);">Interactivity</td><td style="padding:6px;">Full simulation — adjustable params, play/pause/scrub</td>
+</tr>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:6px;color:var(--text-secondary);">Platform</td><td style="padding:6px;">Web — vanilla JS, Canvas 2D, no dependencies</td>
+</tr>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:6px;color:var(--text-secondary);">Chemistry</td><td style="padding:6px;">Initiation + propagation + termination (combination &amp; disproportionation)</td>
+</tr>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:6px;color:var(--text-secondary);">Architecture</td><td style="padding:6px;">4 modules — main, simulation, renderer, ui</td>
+</tr>
+</table>
+</div>

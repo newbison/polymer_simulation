@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(C:/Users/DELL/.claude/skills/brainstorming/scripts/start-server.sh *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(node *)",
+      "Bash(npx --yes serve -p 3456 -s .)",
+      "Bash(python -m http.server 8765)",
+      "Bash(curl -s http://localhost:8765/index.html)",
+      "Bash(pip install *)",
+      "Bash(python -m playwright install chromium)",
+      "Bash(python test_sim.py)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

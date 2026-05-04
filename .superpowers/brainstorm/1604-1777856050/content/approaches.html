@@ -1,0 +1,82 @@
+<h2>Three Approaches for the Polymerization Simulator</h2>
+<p class="subtitle">All browser-based Canvas animations — differ in architecture and UI polish</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>A — Single-File HTML</h3>
+      <p>Everything in one <code>.html</code> file: Canvas, JS simulation, and inline CSS controls. Zero dependencies, zero build. Share by sending the file.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Trivial to share (one file)</li><li>No tools needed to work on it</li><li>Fastest to build</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Messy beyond ~500 lines</li><li>UI controls will look basic</li><li>Hard to extend later</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>B — Modular Vanilla JS (Recommended)</h3>
+      <p>Separate JS modules for simulation engine, rendering, and UI. Clean CSS for polished controls. Served with a simple local server (or just open <code>index.html</code>).</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Clean separation of concerns</li><li>Maintainable &amp; testable</li><li>Polished UI without framework overhead</li><li>Still dependency-free</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Multiple files to manage</li><li>Needs ES modules (works in all modern browsers)</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-body">
+      <h3>C — React + Canvas</h3>
+      <p>React app with a Canvas component for the simulation. Component library for polished sliders, buttons, and panels. Build step with Vite.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Most polished UI possible</li><li>Component ecosystem</li><li>Good for complex state</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Build tooling required</li><li>More dependencies</li><li>Overengineered for a single-canvas app</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top: 2rem;">Visual comparison</h3>
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">A — Single-File</div>
+    <div class="mockup-body">
+      <div style="font-family: sans-serif;">
+        <div style="background:#333;color:white;padding:8px;font-size:14px;">Polymerization Simulator</div>
+        <canvas width="400" height="200" style="width:100%;height:auto;background:#f0f0f0;border-bottom:1px solid #ccc;"></canvas>
+        <div style="padding:8px;font-size:12px;">
+          <div style="margin-bottom:4px;">Speed: [===o===]</div>
+          <div style="margin-bottom:4px;">Monomers: [===o===]</div>
+          <button class="mock-button" style="font-size:12px;">▶ Play</button>
+          <button class="mock-button" style="font-size:12px;">Reset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">B — Modular Vanilla (Recommended)</div>
+    <div class="mockup-body">
+      <div style="font-family: system-ui, sans-serif;">
+        <div style="display:flex;background:#1a1a2e;color:white;padding:8px 12px;font-size:14px;align-items:center;gap:8px;">🧪 Polymerization Simulator</div>
+        <div style="display:flex;">
+          <div style="flex:1;">
+            <canvas width="320" height="200" style="width:100%;height:auto;background:#0f0f23;"></canvas>
+          </div>
+          <div style="width:140px;background:#16213e;color:#ddd;padding:10px;font-size:11px;">
+            <div style="margin-bottom:8px;"><b>Kinetics</b></div>
+            <div style="margin-bottom:4px;">Rate <span style="color:#4ecdc4;">▮▮▮▮▮</span> 1.0×</div>
+            <div style="margin-bottom:8px;">Monomer <span style="color:#ff6b6b;">▮▮▮</span> 50</div>
+            <div style="margin-bottom:4px;"><b>Time</b></div>
+            <div style="margin-bottom:4px;">0:42</div>
+            <div style="margin-bottom:8px;">Conv: 67%</div>
+            <div>
+              <button class="mock-button" style="font-size:11px;">▶</button>
+              <button class="mock-button" style="font-size:11px;">⏸</button>
+              <button class="mock-button" style="font-size:11px;">↺</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

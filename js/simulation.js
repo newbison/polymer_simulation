@@ -90,7 +90,7 @@ export class Simulation {
 
   _processInitiation(dt) {
     const rate = this.params.rateMultiplier;
-    const kd = 5.0 * rate; // initiator decomposition probability per second
+    const kd = 25.0 * rate; // initiator decomposition probability per second
 
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
@@ -128,7 +128,7 @@ export class Simulation {
   _processRadicalCapture(dt) {
     const rate = this.params.rateMultiplier;
     const captureDist = 20; // pixels, generous for visual clarity
-    const kCapture = 2.5 * rate; // high probability — diffusion-limited
+    const kCapture = 12.5 * rate; // high probability — diffusion-limited
 
     const primaryRadicals = [];
     const monomers = [];
@@ -171,7 +171,7 @@ export class Simulation {
 
   _processPropagation(dt) {
     const rate = this.params.rateMultiplier;
-    const kp = 2.5 * rate; // propagation probability
+    const kp = 12.5 * rate; // propagation probability
     const reactDist = 18;
 
     const chainRadicals = [];
@@ -211,7 +211,7 @@ export class Simulation {
 
   _processTermination(dt) {
     const rate = this.params.rateMultiplier;
-    const kt = 0.75 * rate;
+    const kt = 3.75 * rate;
     const termDist = 16;
 
     const chainRadicals = [];

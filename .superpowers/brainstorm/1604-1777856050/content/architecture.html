@@ -1,0 +1,91 @@
+<h2>Architecture Overview</h2>
+<p class="subtitle">Four modules, clear responsibilities, one animation loop</p>
+
+<div style="display:flex;justify-content:center;margin:2rem 0;">
+<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:600px;font-family:monospace;font-size:13px;line-height:2;">
+<pre style="margin:0;color:var(--text-primary);">
+┌─────────────────────────────────────────┐
+│              <b>main.js</b>                   │
+│    Orchestrates loop, wires modules      │
+└──────┬──────────┬──────────┬────────────┘
+       │          │          │
+  <b>simulation.js  renderer.js   ui.js</b>
+  ┌──────┐    ┌──────┐    ┌──────┐
+  │State │    │Canvas│    │Sliders│
+  │Kinetics│   │Sche- │    │Buttons│
+  │Particle│   │matic │    │Read-  │
+  │System │    │Call- │    │outs   │
+  │       │    │outs  │    │       │
+  └──────┘    └──────┘    └──────┘
+</pre>
+</div>
+</div>
+
+<h3>Module Responsibilities</h3>
+
+<table style="width:100%;border-collapse:collapse;font-size:0.95rem;">
+<tr style="border-bottom:1px solid var(--border);">
+  <th style="text-align:left;padding:8px;">Module</th>
+  <th style="text-align:left;padding:8px;">Owns</th>
+  <th style="text-align:left;padding:8px;">Exposes</th>
+</tr>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:8px;"><b>simulation.js</b></td>
+  <td style="padding:8px;">
+    Particle positions &amp; velocities<br>
+    State machine: initiation → prop. → termination<br>
+    Kinetic rates (k<sub>d</sub>, k<sub>p</sub>, k<sub>t</sub>)<br>
+    Chain tracking &amp; conversion stats
+  </td>
+  <td style="padding:8px;">
+    <code>tick(dt)</code> — advance one frame<br>
+    <code>getState()</code> — all particle data<br>
+    <code>getStats()</code> — conversion, M<sub>n</sub>, PDI<br>
+    <code>setParams(p)</code> — update kinetics<br>
+    <code>reset()</code>
+  </td>
+</tr>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:8px;"><b>renderer.js</b></td>
+  <td style="padding:8px;">
+    Canvas context &amp; drawing logic<br>
+    Schematic circle/line rendering<br>
+    Ball-and-stick callout overlay<br>
+    Color palette &amp; visual states
+  </td>
+  <td style="padding:8px;">
+    <code>draw(state, stats)</code> — render frame<br>
+    <code>resize(w, h)</code> — handle resize
+  </td>
+</tr>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:8px;"><b>ui.js</b></td>
+  <td style="padding:8px;">
+    DOM for control panel<br>
+    Sliders, buttons, readouts<br>
+    Event listeners → callbacks
+  </td>
+  <td style="padding:8px;">
+    <code>onPlay(fn)</code><br>
+    <code>onReset(fn)</code><br>
+    <code>onParamChange(fn)</code><br>
+    <code>updateReadouts(stats)</code>
+  </td>
+</tr>
+<tr style="border-bottom:1px solid var(--border);">
+  <td style="padding:8px;"><b>main.js</b></td>
+  <td style="padding:8px;">
+    requestAnimationFrame loop<br>
+    Wiring modules together<br>
+    Pause/play state
+  </td>
+  <td style="padding:8px;">
+    <code>start()</code> — entry point
+  </td>
+</tr>
+</table>
+
+<div class="section" style="margin-top:2rem;">
+  <h3>Data Flow</h3>
+  <p>Each frame: <b>main.js</b> calls <code>sim.tick(dt)</code> → gets state → passes to <code>renderer.draw(state)</code>. UI events flow the other way: slider change → callback → <code>sim.setParams()</code>.</p>
+</div>

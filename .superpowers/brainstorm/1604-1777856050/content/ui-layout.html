@@ -1,0 +1,102 @@
+<h2>UI Layout &amp; Controls</h2>
+<p class="subtitle">Dark theme, side panel controls, full-width canvas — designed for clarity</p>
+
+<div class="mockup">
+  <div class="mockup-header">Full Layout (1200×700 concept)</div>
+  <div class="mockup-body">
+    <div style="font-family:system-ui,sans-serif;background:#0a0a1a;border-radius:8px;overflow:hidden;">
+      <!-- Header bar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:#12122a;border-bottom:1px solid #2a2a4a;">
+        <span style="font-size:16px;font-weight:600;color:#fff;">🧪 Free-Radical Polymerization Simulator</span>
+        <div style="display:flex;gap:8px;">
+          <span style="background:#1a3a1a;color:#4ecdc4;padding:2px 10px;border-radius:10px;font-size:11px;">● Initiation</span>
+          <span style="background:#1a1a3a;color:#888;padding:2px 10px;border-radius:10px;font-size:11px;">○ Propagation</span>
+          <span style="background:#1a1a3a;color:#888;padding:2px 10px;border-radius:10px;font-size:11px;">○ Termination</span>
+        </div>
+      </div>
+      <!-- Main area -->
+      <div style="display:flex;">
+        <!-- Canvas -->
+        <div style="flex:1;min-height:400px;background:#0f0f23;position:relative;display:flex;align-items:center;justify-content:center;">
+          <div style="text-align:center;color:#666;font-size:14px;">
+            <div style="font-size:48px;margin-bottom:8px;">⚛️</div>
+            Simulation Canvas<br>
+            <span style="font-size:11px;">Schematic particle view</span>
+          </div>
+          <!-- Callout inset -->
+          <div style="position:absolute;bottom:12px;right:12px;width:140px;height:100px;background:rgba(18,18,42,0.95);border:1px solid #2a2a4a;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#888;">
+            Ball &amp; Stick Callout
+          </div>
+        </div>
+        <!-- Side panel -->
+        <div style="width:220px;background:#12122a;border-left:1px solid #2a2a4a;padding:16px;color:#ccc;font-size:12px;">
+          <div class="label" style="margin-bottom:4px;">Parameters</div>
+          <div style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+              <span>Initiator conc.</span><span style="color:#4ecdc4;">0.5%</span>
+            </div>
+            <input type="range" style="width:100%;accent-color:#4ecdc4;" disabled>
+          </div>
+          <div style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+              <span>Monomer count</span><span style="color:#4ecdc4;">100</span>
+            </div>
+            <input type="range" style="width:100%;accent-color:#4ecdc4;" disabled>
+          </div>
+          <div style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px;">
+              <span>Reaction rate</span><span style="color:#4ecdc4;">1.0×</span>
+            </div>
+            <input type="range" style="width:100%;accent-color:#4ecdc4;" disabled>
+          </div>
+          <div class="label" style="margin-top:16px;margin-bottom:8px;">Time Controls</div>
+          <div style="display:flex;gap:6px;margin-bottom:16px;">
+            <button class="mock-button" style="flex:1;font-size:12px;">▶ Play</button>
+            <button class="mock-button" style="flex:1;font-size:12px;">⏸ Pause</button>
+            <button class="mock-button" style="font-size:12px;padding:4px 8px;">↺</button>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div>Speed: 1×</div>
+            <input type="range" style="width:100%;accent-color:#4ecdc4;" disabled>
+          </div>
+          <div class="label" style="margin-top:16px;margin-bottom:8px;">Readouts</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;">
+            <span style="color:#888;">Time:</span><span>0:42</span>
+            <span style="color:#888;">Conversion:</span><span style="color:#ff6b6b;">67%</span>
+            <span style="color:#888;">M<sub>n</sub>:</span><span>1,240</span>
+            <span style="color:#888;">Chains:</span><span>14</span>
+            <span style="color:#888;">Radicals:</span><span style="color:#4ecdc4;">3</span>
+          </div>
+        </div>
+      </div>
+      <!-- Bottom bar -->
+      <div style="padding:6px 16px;background:#12122a;border-top:1px solid #2a2a4a;display:flex;gap:24px;font-size:11px;color:#888;">
+        <span>🟡 Initiation</span>
+        <span>🟢 Propagation</span>
+        <span>🔴 Termination</span>
+        <span style="margin-left:auto;">Concentration vs. Time chart ↓ expand</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top:2rem;">Key UI Decisions</h3>
+<div class="pros-cons">
+  <div class="pros">
+    <h4>Included</h4>
+    <ul>
+      <li>Stage badges update in real-time (active stage highlighted)</li>
+      <li>Ball-and-stick callout auto-appears for key events, fades after ~2s</li>
+      <li>Sliders are live — changing mid-simulation immediately affects rates</li>
+      <li>M<sub>n</sub> and conversion give students quantitative insight</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>Deferred</h4>
+    <ul>
+      <li>Concentration vs. time chart (bottom bar toggle) — nice but adds complexity</li>
+      <li>Chain length distribution histogram — separate panel, quantum of value</li>
+      <li>Temperature/Arrhenius modeling — just use a "rate multiplier" slider for now</li>
+    </ul>
+  </div>
+</div>
