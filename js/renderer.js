@@ -1,3 +1,4 @@
+// DEPRECATED: use lib/renderer.js instead. This file kept for backward compat with js/bundle.js.
 const COLORS = {
   initiator: '#ffd93d',
   primaryRadical: '#ff6b6b',
