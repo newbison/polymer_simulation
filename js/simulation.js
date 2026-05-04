@@ -147,6 +147,46 @@ export class Simulation {
     }
   }
 
+  _processPropagation(dt) {
+    const rate = this.params.rateMultiplier;
+    const kp = 0.3 * rate; // propagation probability
+    const reactDist = 18;
+
+    const chainRadicals = [];
+    const monomers = [];
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      if (p.type === 'chainRadical') chainRadicals.push(i);
+      else if (p.type === 'monomer' && !p.consumed) monomers.push(i);
+    }
+
+    for (const ci of chainRadicals) {
+      const chain = this.particles[ci];
+      const head = chain.segments[chain.segments.length - 1];
+
+      for (const mi of monomers) {
+        const monomer = this.particles[mi];
+        if (monomer.consumed) continue;
+
+        const dx = head.x - monomer.x;
+        const dy = head.y - monomer.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < reactDist && Math.random() < kp * dt) {
+          monomer.consumed = true;
+          // Add monomer position as new head
+          chain.segments.push({ x: monomer.x, y: monomer.y });
+          // Small velocity kick
+          chain.vx += (Math.random() - 0.5) * 0.5;
+          chain.vy += (Math.random() - 0.5) * 0.5;
+          this.calloutEvent = { type: 'propagation', time: this.time, chainLen: chain.segments.length };
+          break; // one propagation per chain per frame
+        }
+      }
+    }
+  }
+
   _updateStats() {
     const totalMonomerInit = this.params.monomerCount;
     const free = this.particles.filter(p => p.type === 'monomer' && !p.consumed).length;
@@ -171,6 +211,7 @@ export class Simulation {
     this._moveParticles(scaledDt);
     this._processInitiation(scaledDt);
     this._processRadicalCapture(scaledDt);
+    this._processPropagation(scaledDt);
     this._updateStats();
   }
 
