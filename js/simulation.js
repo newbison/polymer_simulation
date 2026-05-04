@@ -4,7 +4,7 @@ export class Simulation {
     this.time = 0;
     this.params = {
       initiatorCount: 10,
-      monomerCount: 5000,
+      monomerCount: 1000,
       rateMultiplier: 5.0,
       speedMultiplier: 5.0,
     };
