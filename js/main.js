@@ -80,4 +80,3 @@ const { particles, stats } = sim.getState();
 stats.time = sim.time;
 renderer.draw(particles);
 ui.updateReadouts(stats);
-play();

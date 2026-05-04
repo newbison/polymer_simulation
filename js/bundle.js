@@ -6,10 +6,10 @@ class Simulation {
     this.particles = [];
     this.time = 0;
     this.params = {
-      initiatorCount: 5,
-      monomerCount: 100,
-      rateMultiplier: 1.0,
-      speedMultiplier: 1.0,
+      initiatorCount: 10,
+      monomerCount: 5000,
+      rateMultiplier: 5.0,
+      speedMultiplier: 5.0,
     };
     this.stats = {
       conversion: 0,
@@ -767,4 +767,3 @@ const { particles, stats } = sim.getState();
 stats.time = sim.time;
 renderer.draw(particles);
 ui.updateReadouts(stats);
-play();
