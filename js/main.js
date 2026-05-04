@@ -1,15 +1,14 @@
 import { Simulation } from './simulation.js';
 import { Renderer } from './renderer.js';
+import { UI } from './ui.js';
 
 const canvas = document.getElementById('sim-canvas');
 const sim = new Simulation();
 const renderer = new Renderer(canvas);
+const ui = new UI();
 
-// Sync canvas size to simulation
 function syncSize() {
-  const w = renderer.w;
-  const h = renderer.h;
-  sim.setCanvasSize(w, h);
+  sim.setCanvasSize(renderer.w, renderer.h);
 }
 
 let running = false;
@@ -19,13 +18,16 @@ let animId = null;
 function loop(timestamp) {
   if (!running) return;
 
-  const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.1) : 0.016; // cap at 100ms
+  const dt = lastTime ? Math.min((timestamp - lastTime) / 1000, 0.1) : 0.016;
   lastTime = timestamp;
 
   syncSize();
   sim.tick(dt);
   const { particles, stats } = sim.getState();
+  stats.time = sim.time;
   renderer.draw(particles);
+  ui.updateReadouts(stats);
+  ui.updateStageBadges({ ...stats, totalMonomers: sim.params.monomerCount });
 
   animId = requestAnimationFrame(loop);
 }
@@ -42,11 +44,32 @@ function pause() {
   if (animId) cancelAnimationFrame(animId);
 }
 
-// Initial setup
+// Wire UI callbacks
+ui.on('play', play);
+ui.on('pause', pause);
+ui.on('reset', () => {
+  pause();
+  sim.reset();
+  const { particles, stats } = sim.getState();
+  stats.time = sim.time;
+  syncSize();
+  renderer.draw(particles);
+  ui.updateReadouts(stats);
+  ui.updateStageBadges({ ...stats, totalMonomers: sim.params.monomerCount });
+  play();
+});
+ui.on('paramChange', (params) => {
+  sim.setParams(params);
+});
+ui.on('speedChange', (speed) => {
+  sim.setParams({ speedMultiplier: speed });
+});
+
+// Auto-start
 syncSize();
 sim.reset();
 const { particles, stats } = sim.getState();
-renderer.draw(particles); // draw initial state
-
-// Auto-play for development verification
+stats.time = sim.time;
+renderer.draw(particles);
+ui.updateReadouts(stats);
 play();
