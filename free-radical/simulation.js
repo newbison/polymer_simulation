@@ -1,4 +1,3 @@
-// DEPRECATED: use free-radical/simulation.js instead. This file kept for backward compat with js/bundle.js.
 export class Simulation {
   constructor() {
     this.particles = [];
@@ -123,7 +122,31 @@ export class Simulation {
       });
     }
 
-    this.calloutEvent = { type: 'initiation', time: this.time };
+    this.calloutEvent = {
+      title: 'Initiation: I₂ → 2 I•',
+      drawFn: (ctx, w, h) => {
+        const cx = w / 2, cy = h / 2;
+        ctx.fillStyle = 'rgba(255,217,61,0.4)';
+        ctx.beginPath(); ctx.arc(cx - 8, cy, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 8, cy, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ff6b6b';
+        ctx.beginPath(); ctx.arc(cx - 22, cy, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + 22, cy, 5, 0, Math.PI * 2); ctx.fill();
+        [cx - 22, cx + 22].forEach(rx => {
+          const grad = ctx.createRadialGradient(rx, cy, 0, rx, cy, 10);
+          grad.addColorStop(0, 'rgba(255,107,107,0.5)'); grad.addColorStop(1, 'transparent');
+          ctx.fillStyle = grad;
+          ctx.beginPath(); ctx.arc(rx, cy, 10, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px sans-serif';
+        ctx.fillText('→', cx - 4, cy + 20);
+      },
+    };
   }
 
   _processRadicalCapture(dt) {
@@ -163,7 +186,32 @@ export class Simulation {
             vy: (Math.random() - 0.5) * 1.5,
             radius: 6,
           };
-          this.calloutEvent = { type: 'firstPropagation', time: this.time };
+          this.calloutEvent = {
+            title: 'Initiation: R• + M → RM•',
+            drawFn: (ctx, w, h) => {
+              const cx = w / 2, cy = h / 2;
+              ctx.fillStyle = '#777';
+              ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+              ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.stroke();
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx - 15, cy, 7, 0, Math.PI * 2); ctx.fill();
+              const grad = ctx.createRadialGradient(cx - 15, cy, 0, cx - 15, cy, 12);
+              grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
+              ctx.fillStyle = grad;
+              ctx.beginPath(); ctx.arc(cx - 15, cy, 12, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = '#fff';
+              ctx.font = '16px sans-serif';
+              ctx.fillText('→', cx + 2, cy + 5);
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx + 50, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = '#4ecdc4'; ctx.lineWidth = 1;
+              ctx.beginPath(); ctx.moveTo(cx + 50, cy - 8); ctx.lineTo(cx + 50, cy + 8); ctx.stroke();
+              ctx.fillStyle = '#fff';
+              ctx.font = '9px sans-serif';
+              ctx.fillText('n+1', cx + 42, cy - 12);
+            },
+          };
           break; // each radical captures one monomer per frame
         }
       }
@@ -203,7 +251,32 @@ export class Simulation {
           const mob = this._chainMobility(chain.segments.length);
           chain.vx += (Math.random() - 0.5) * 0.5 * mob;
           chain.vy += (Math.random() - 0.5) * 0.5 * mob;
-          this.calloutEvent = { type: 'propagation', time: this.time, chainLen: chain.segments.length };
+          this.calloutEvent = {
+            title: `Propagation: chain + M (n=${chain.segments.length})`,
+            drawFn: (ctx, w, h) => {
+              const cx = w / 2, cy = h / 2;
+              ctx.fillStyle = '#777';
+              ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+              ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.stroke();
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx - 15, cy, 7, 0, Math.PI * 2); ctx.fill();
+              const grad = ctx.createRadialGradient(cx - 15, cy, 0, cx - 15, cy, 12);
+              grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
+              ctx.fillStyle = grad;
+              ctx.beginPath(); ctx.arc(cx - 15, cy, 12, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = '#fff';
+              ctx.font = '16px sans-serif';
+              ctx.fillText('→', cx + 2, cy + 5);
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx + 50, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.strokeStyle = '#4ecdc4'; ctx.lineWidth = 1;
+              ctx.beginPath(); ctx.moveTo(cx + 50, cy - 8); ctx.lineTo(cx + 50, cy + 8); ctx.stroke();
+              ctx.fillStyle = '#fff';
+              ctx.font = '9px sans-serif';
+              ctx.fillText('n+1', cx + 42, cy - 12);
+            },
+          };
           break; // one propagation per chain per frame
         }
       }
@@ -274,7 +347,30 @@ export class Simulation {
             });
           }
 
-          this.calloutEvent = { type: 'termination', time: this.time };
+          this.calloutEvent = {
+            title: 'Termination',
+            drawFn: (ctx, w, h) => {
+              const cx = w / 2, cy = h / 2;
+              ctx.fillStyle = '#4ecdc4';
+              ctx.beginPath(); ctx.arc(cx - 20, cy - 5, 7, 0, Math.PI * 2); ctx.fill();
+              ctx.beginPath(); ctx.arc(cx + 20, cy + 5, 7, 0, Math.PI * 2); ctx.fill();
+              [cx - 20, cx + 20].forEach((rx, i) => {
+                const grad = ctx.createRadialGradient(rx, cy - 5 + i * 10, 0, rx, cy - 5 + i * 10, 10);
+                grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(rx, cy - 5 + i * 10, 10, 0, Math.PI * 2); ctx.fill();
+              });
+              ctx.strokeStyle = '#ff6b6b';
+              ctx.lineWidth = 2;
+              ctx.beginPath(); ctx.moveTo(cx + 5, cy - 15); ctx.lineTo(cx + 15, cy - 5); ctx.stroke();
+              ctx.beginPath(); ctx.moveTo(cx + 15, cy - 15); ctx.lineTo(cx + 5, cy - 5); ctx.stroke();
+              ctx.fillStyle = '#555';
+              ctx.beginPath(); ctx.arc(cx + 45, cy, 8, 0, Math.PI * 2); ctx.fill();
+              ctx.fillStyle = '#fff';
+              ctx.font = '9px sans-serif';
+              ctx.fillText('dead', cx + 35, cy - 14);
+            },
+          };
           break; // one termination pair per frame check
         }
       }

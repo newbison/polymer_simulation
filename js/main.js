@@ -1,3 +1,4 @@
+// DEPRECATED: use free-radical/main.js instead. This file kept for backward compat with js/bundle.js.
 import { Simulation } from './simulation.js';
 import { Renderer } from './renderer.js';
 import { UI } from './ui.js';

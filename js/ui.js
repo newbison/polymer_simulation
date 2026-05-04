@@ -1,3 +1,4 @@
+// DEPRECATED: use free-radical/ui.js instead. This file kept for backward compat with js/bundle.js.
 export class UI {
   constructor() {
     this._callbacks = {};
