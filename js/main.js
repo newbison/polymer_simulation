@@ -23,6 +23,14 @@ function loop(timestamp) {
 
   syncSize();
   sim.tick(dt);
+
+  // Handle callout event
+  if (sim.calloutEvent) {
+    renderer.drawCallout(sim.calloutEvent);
+    renderer._scheduleCalloutClear();
+    sim.calloutEvent = null;
+  }
+
   const { particles, stats } = sim.getState();
   stats.time = sim.time;
   renderer.draw(particles);

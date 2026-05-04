@@ -106,6 +106,105 @@ export class Renderer {
     }
   }
 
+  drawCallout(event) {
+    const calloutEl = document.getElementById('callout');
+    const titleEl = document.getElementById('callout-title');
+    const calloutCanvas = document.getElementById('callout-canvas');
+    const ctx = calloutCanvas.getContext('2d');
+
+    if (!event) {
+      calloutEl.classList.add('hidden');
+      return;
+    }
+
+    calloutEl.classList.remove('hidden');
+    ctx.clearRect(0, 0, calloutCanvas.width, calloutCanvas.height);
+
+    const w = calloutCanvas.width;
+    const h = calloutCanvas.height;
+
+    if (event.type === 'initiation') {
+      titleEl.textContent = 'Initiation: I₂ → 2 I•';
+      const cx = w / 2, cy = h / 2;
+      ctx.fillStyle = 'rgba(255,217,61,0.4)';
+      ctx.beginPath(); ctx.arc(cx - 8, cy, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 8, cy, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ff6b6b';
+      ctx.beginPath(); ctx.arc(cx - 22, cy, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 22, cy, 5, 0, Math.PI * 2); ctx.fill();
+      [cx - 22, cx + 22].forEach(rx => {
+        const grad = ctx.createRadialGradient(rx, cy, 0, rx, cy, 10);
+        grad.addColorStop(0, 'rgba(255,107,107,0.5)'); grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(rx, cy, 10, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px sans-serif';
+      ctx.fillText('→', cx - 4, cy + 20);
+    }
+
+    if (event.type === 'propagation' || event.type === 'firstPropagation') {
+      titleEl.textContent = event.type === 'firstPropagation'
+        ? 'Initiation: R• + M → RM•'
+        : `Propagation: chain + M (n=${event.chainLen || '?'})`;
+      const cx = w / 2, cy = h / 2;
+      ctx.fillStyle = '#777';
+      ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx + 25, cy, 8, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#4ecdc4';
+      ctx.beginPath(); ctx.arc(cx - 15, cy, 7, 0, Math.PI * 2); ctx.fill();
+      const grad = ctx.createRadialGradient(cx - 15, cy, 0, cx - 15, cy, 12);
+      grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx - 15, cy, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = '16px sans-serif';
+      ctx.fillText('→', cx + 2, cy + 5);
+      ctx.fillStyle = '#4ecdc4';
+      ctx.beginPath(); ctx.arc(cx + 50, cy, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#4ecdc4'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx + 50, cy - 8); ctx.lineTo(cx + 50, cy + 8); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = '9px sans-serif';
+      ctx.fillText('n+1', cx + 42, cy - 12);
+    }
+
+    if (event.type === 'termination') {
+      titleEl.textContent = 'Termination';
+      const cx = w / 2, cy = h / 2;
+      ctx.fillStyle = '#4ecdc4';
+      ctx.beginPath(); ctx.arc(cx - 20, cy - 5, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + 20, cy + 5, 7, 0, Math.PI * 2); ctx.fill();
+      [cx - 20, cx + 20].forEach((rx, i) => {
+        const grad = ctx.createRadialGradient(rx, cy - 5 + i * 10, 0, rx, cy - 5 + i * 10, 10);
+        grad.addColorStop(0, 'rgba(78,205,196,0.5)'); grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(rx, cy - 5 + i * 10, 10, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.strokeStyle = '#ff6b6b';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx + 5, cy - 15); ctx.lineTo(cx + 15, cy - 5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + 15, cy - 15); ctx.lineTo(cx + 5, cy - 5); ctx.stroke();
+      ctx.fillStyle = '#555';
+      ctx.beginPath(); ctx.arc(cx + 45, cy, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = '9px sans-serif';
+      ctx.fillText('dead', cx + 35, cy - 14);
+    }
+  }
+
+  _scheduleCalloutClear() {
+    if (this._calloutTimer) clearTimeout(this._calloutTimer);
+    this._calloutTimer = setTimeout(() => {
+      document.getElementById('callout').classList.add('hidden');
+    }, 2500);
+  }
+
   dispose() {
     window.removeEventListener('resize', this._resizeHandler);
   }
