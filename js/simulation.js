@@ -90,7 +90,7 @@ export class Simulation {
 
   _processInitiation(dt) {
     const rate = this.params.rateMultiplier;
-    const kd = 0.02 * rate; // initiator decomposition probability per second
+    const kd = 1.0 * rate; // initiator decomposition probability per second
 
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
@@ -171,7 +171,7 @@ export class Simulation {
 
   _processPropagation(dt) {
     const rate = this.params.rateMultiplier;
-    const kp = 0.3 * rate; // propagation probability
+    const kp = 0.5 * rate; // propagation probability
     const reactDist = 18;
 
     const chainRadicals = [];
