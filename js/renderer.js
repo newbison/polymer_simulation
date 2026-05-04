@@ -26,7 +26,8 @@ export class Renderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.resize();
-    window.addEventListener('resize', () => this.resize());
+    this._resizeHandler = () => this.resize();
+    window.addEventListener('resize', this._resizeHandler);
   }
 
   resize() {
@@ -38,7 +39,7 @@ export class Renderer {
     this.h = rect.height;
   }
 
-  draw(particles, stats) {
+  draw(particles) {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.w, this.h);
 
@@ -48,7 +49,7 @@ export class Renderer {
 
     // Draw bonds between chain segments first (below particles)
     for (const p of particles) {
-      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments.length > 1) {
+      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
         ctx.strokeStyle = COLORS.bond;
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -87,7 +88,7 @@ export class Renderer {
       ctx.fill();
 
       // Chain body segments (smaller dots)
-      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments.length > 1) {
+      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
         ctx.fillStyle = p.type === 'chainRadical' ? COLORS.chainRadical : COLORS.deadChain;
         for (let i = 0; i < p.segments.length - 1; i++) {
           const seg = p.segments[i];
@@ -103,5 +104,9 @@ export class Renderer {
         ctx.fill();
       }
     }
+  }
+
+  dispose() {
+    window.removeEventListener('resize', this._resizeHandler);
   }
 }
