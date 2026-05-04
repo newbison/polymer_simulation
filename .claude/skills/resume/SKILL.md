@@ -2,10 +2,9 @@
 name: resume
 description: On reopening the project, read CLAUDE.md, CHANGELOG.md, and session memory to catch up on what happened. The session-start counterpart to close-session.
 ---
-
 # Resume
 
-Catch up on project state when reopening after time away. Read the docs, the log, and the memory so you know exactly where things stand.
+* [ ] 
 
 **Announce at start:** "Let me catch up on what's happened..."
 
