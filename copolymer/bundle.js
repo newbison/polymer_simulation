@@ -273,10 +273,10 @@ class Simulation {
       initiatorCount: 10,
       monomerACount: 950,
       monomerBCount: 50,
-      r1: 0.3,
-      r2: 3.0,
+      r1: 0.35,
+      r2: 2.5,
       rateMultiplier: 5.0,
-      speedMultiplier: 5.0,
+      speedMultiplier: 10.0,
     };
     this.stats = {
       conversion: 0,
@@ -319,6 +319,8 @@ class Simulation {
 
   _initParticles() {
     const { initiatorCount, monomerACount, monomerBCount } = this.params;
+    this._initMonomerACount = monomerACount;
+    this._initMonomerBCount = monomerBCount;
     this.particles = [];
     const minDist = 15;
 
@@ -729,8 +731,8 @@ class Simulation {
   }
 
   _updateStats() {
-    const totalA = this.params.monomerACount;
-    const totalB = this.params.monomerBCount;
+    const totalA = this._initMonomerACount;
+    const totalB = this._initMonomerBCount;
     const freeA = this.particles.filter(p => p.type === 'monomerA' && !p.consumed).length;
     const freeB = this.particles.filter(p => p.type === 'monomerB' && !p.consumed).length;
     const totalMonomers = totalA + totalB;
@@ -747,10 +749,10 @@ class Simulation {
       freeMonomerB: freeB,
       cumulativeF1: (this._monomerAAdded + this._monomerBAdded) > 0
         ? this._monomerAAdded / (this._monomerAAdded + this._monomerBAdded)
-        : this.params.monomerACount / totalMonomers,
+        : this._initMonomerACount / totalMonomers,
       instantaneousF1: (this._recentAAdded + this._recentBAdded) > 0
         ? this._recentAAdded / (this._recentAAdded + this._recentBAdded)
-        : this.params.monomerACount / totalMonomers,
+        : this._initMonomerACount / totalMonomers,
     };
 
     this._recentAAdded *= 0.95;
@@ -950,7 +952,7 @@ class UI extends UIBase {
 
   _applyPreset(name) {
     const presets = {
-      '2eha-aa':  { r1: 0.3, r2: 3.0 },
+      '2eha-aa':  { r1: 0.35, r2: 2.5 },
       'ideal':    { r1: 1.0, r2: 1.0 },
       'alternating': { r1: 0.01, r2: 0.01 },
       'styrene-an': { r1: 0.4, r2: 0.04 },

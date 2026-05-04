@@ -273,7 +273,7 @@ class Simulation {
       initiatorCount: 10,
       monomerCount: 1000,
       rateMultiplier: 5.0,
-      speedMultiplier: 5.0,
+      speedMultiplier: 10.0,
     };
     this.stats = {
       conversion: 0,
@@ -305,6 +305,7 @@ class Simulation {
 
   _initParticles() {
     const { initiatorCount, monomerCount } = this.params;
+    this._initMonomerCount = monomerCount;
     this.particles = [];
     const minDist = 15;
 
@@ -651,7 +652,7 @@ class Simulation {
   }
 
   _updateStats() {
-    const totalMonomerInit = this.params.monomerCount;
+    const totalMonomerInit = this._initMonomerCount;
     const free = this.particles.filter(p => p.type === 'monomer' && !p.consumed).length;
     const consumed = totalMonomerInit - free;
     const activeChains = this.particles.filter(p => p.type === 'chainRadical').length;
