@@ -32,6 +32,7 @@ export class Simulation {
   reset() {
     this.particles = [];
     this.time = 0;
+    this.calloutEvent = null;
     this._initParticles();
   }
 
@@ -114,6 +115,7 @@ export class Simulation {
       }
 
       if (p.type === 'chainRadical' || p.type === 'deadChain') {
+        if (!p.segments || p.segments.length === 0) continue;
         // Move the head (last segment)
         const head = p.segments[p.segments.length - 1];
         head.x += p.vx * dt * 60;
