@@ -187,6 +187,83 @@ export class Simulation {
     }
   }
 
+  _processTermination(dt) {
+    const rate = this.params.rateMultiplier;
+    const kt = 0.15 * rate;
+    const termDist = 16;
+
+    const chainRadicals = [];
+    for (let i = 0; i < this.particles.length; i++) {
+      if (this.particles[i].type === 'chainRadical') chainRadicals.push(i);
+    }
+
+    const terminated = new Set();
+
+    for (let i = 0; i < chainRadicals.length; i++) {
+      const ai = chainRadicals[i];
+      if (terminated.has(ai)) continue;
+      const chainA = this.particles[ai];
+
+      for (let j = i + 1; j < chainRadicals.length; j++) {
+        const bi = chainRadicals[j];
+        if (terminated.has(bi)) continue;
+        const chainB = this.particles[bi];
+
+        const headA = chainA.segments[chainA.segments.length - 1];
+        const headB = chainB.segments[chainB.segments.length - 1];
+        const dx = headA.x - headB.x;
+        const dy = headA.y - headB.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < termDist && Math.random() < kt * dt) {
+          terminated.add(ai);
+          terminated.add(bi);
+
+          // 50% combination, 50% disproportionation
+          if (Math.random() < 0.5) {
+            // Combination: join chains into one dead chain
+            const combinedSegments = [
+              ...chainA.segments,
+              ...chainB.segments.slice().reverse(),
+            ];
+            this.particles.push({
+              type: 'deadChain',
+              segments: combinedSegments,
+              vx: (chainA.vx + chainB.vx) / 2,
+              vy: (chainA.vy + chainB.vy) / 2,
+              radius: 5,
+            });
+          } else {
+            // Disproportionation: both become dead chains
+            this.particles.push({
+              type: 'deadChain',
+              segments: [...chainA.segments],
+              vx: chainA.vx * 0.5,
+              vy: chainA.vy * 0.5,
+              radius: 5,
+            });
+            this.particles.push({
+              type: 'deadChain',
+              segments: [...chainB.segments],
+              vx: chainB.vx * 0.5,
+              vy: chainB.vy * 0.5,
+              radius: 5,
+            });
+          }
+
+          this.calloutEvent = { type: 'termination', time: this.time };
+          break; // one termination pair per frame check
+        }
+      }
+    }
+
+    // Remove terminated chain radicals (highest indices first)
+    const toRemove = [...terminated].sort((a, b) => b - a);
+    for (const idx of toRemove) {
+      this.particles.splice(idx, 1);
+    }
+  }
+
   _updateStats() {
     const totalMonomerInit = this.params.monomerCount;
     const free = this.particles.filter(p => p.type === 'monomer' && !p.consumed).length;
@@ -212,6 +289,7 @@ export class Simulation {
     this._processInitiation(scaledDt);
     this._processRadicalCapture(scaledDt);
     this._processPropagation(scaledDt);
+    this._processTermination(scaledDt);
     this._updateStats();
   }
 
