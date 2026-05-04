@@ -7,8 +7,8 @@ class Simulation {
     this.time = 0;
     this.params = {
       initiatorCount: 10,
-      monomerCount: 5000,
-      rateMultiplier: 5.0,
+      monomerCount: 1000,
+      rateMultiplier: 10.0,
       speedMultiplier: 5.0,
     };
     this.stats = {
@@ -197,8 +197,9 @@ class Simulation {
         if (dist < reactDist && Math.random() < kp * dt) {
           monomer.consumed = true;
           chain.segments.push({ x: monomer.x, y: monomer.y });
-          chain.vx += (Math.random() - 0.5) * 0.5;
-          chain.vy += (Math.random() - 0.5) * 0.5;
+          const mob = this._chainMobility(chain.segments.length);
+          chain.vx += (Math.random() - 0.5) * 0.5 * mob;
+          chain.vy += (Math.random() - 0.5) * 0.5 * mob;
           this.calloutEvent = { type: 'propagation', time: this.time, chainLen: chain.segments.length };
           break;
         }
@@ -310,6 +311,10 @@ class Simulation {
     this._updateStats();
   }
 
+  _chainMobility(chainLength) {
+    return 1 / Math.sqrt(1 + (chainLength - 1) * 0.3);
+  }
+
   _moveParticles(dt) {
     const w = this._canvasW;
     const h = this._canvasH;
@@ -317,13 +322,17 @@ class Simulation {
     for (const p of this.particles) {
       if (p.type === 'monomer' && p.consumed) continue;
 
-      p.vx += (Math.random() - 0.5) * 0.5;
-      p.vy += (Math.random() - 0.5) * 0.5;
+      const mobility = (p.type === 'chainRadical' || p.type === 'deadChain')
+        ? this._chainMobility(p.segments.length)
+        : 1;
+
+      p.vx += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
+      p.vy += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
       p.vx *= 0.98;
       p.vy *= 0.98;
 
       const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-      const maxSpeed = 3;
+      const maxSpeed = 3 * mobility;
       if (speed > maxSpeed) {
         p.vx = (p.vx / speed) * maxSpeed;
         p.vy = (p.vy / speed) * maxSpeed;

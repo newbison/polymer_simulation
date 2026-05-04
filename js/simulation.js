@@ -199,9 +199,9 @@ export class Simulation {
           monomer.consumed = true;
           // Add monomer position as new head
           chain.segments.push({ x: monomer.x, y: monomer.y });
-          // Small velocity kick
-          chain.vx += (Math.random() - 0.5) * 0.5;
-          chain.vy += (Math.random() - 0.5) * 0.5;
+          const mob = this._chainMobility(chain.segments.length);
+          chain.vx += (Math.random() - 0.5) * 0.5 * mob;
+          chain.vy += (Math.random() - 0.5) * 0.5 * mob;
           this.calloutEvent = { type: 'propagation', time: this.time, chainLen: chain.segments.length };
           break; // one propagation per chain per frame
         }
@@ -317,6 +317,10 @@ export class Simulation {
     this._updateStats();
   }
 
+  _chainMobility(chainLength) {
+    return 1 / Math.sqrt(1 + (chainLength - 1) * 0.3);
+  }
+
   _moveParticles(dt) {
     const w = this._canvasW;
     const h = this._canvasH;
@@ -324,17 +328,21 @@ export class Simulation {
     for (const p of this.particles) {
       if (p.type === 'monomer' && p.consumed) continue;
 
-      // Brownian perturbation
-      p.vx += (Math.random() - 0.5) * 0.5;
-      p.vy += (Math.random() - 0.5) * 0.5;
+      const mobility = (p.type === 'chainRadical' || p.type === 'deadChain')
+        ? this._chainMobility(p.segments.length)
+        : 1;
+
+      // Brownian perturbation — scaled by mobility
+      p.vx += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
+      p.vy += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
 
       // Damping
       p.vx *= 0.98;
       p.vy *= 0.98;
 
-      // Speed cap
+      // Speed cap — scaled by mobility
       const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-      const maxSpeed = 3;
+      const maxSpeed = 3 * mobility;
       if (speed > maxSpeed) {
         p.vx = (p.vx / speed) * maxSpeed;
         p.vy = (p.vy / speed) * maxSpeed;
@@ -342,7 +350,6 @@ export class Simulation {
 
       if (p.type === 'chainRadical' || p.type === 'deadChain') {
         if (!p.segments || p.segments.length === 0) continue;
-        // Move the head (last segment)
         const head = p.segments[p.segments.length - 1];
         head.x += p.vx * dt * 60;
         head.y += p.vy * dt * 60;
@@ -368,7 +375,6 @@ export class Simulation {
           }
         }
       } else {
-        // Simple particle movement
         p.x += p.vx * dt * 60;
         p.y += p.vy * dt * 60;
 
