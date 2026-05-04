@@ -5,3 +5,8 @@
 - Reduced default monomer count to 1000 (was 5000 in HTML slider)
 - Added `/resume` and `/close-session` skills for session continuity
 - Published to GitHub
+- **Multi-sim platform:** extracted shared lib/ with generic Renderer (theme-parameterized) and UIBase class
+- **Copolymerization simulator:** Mayo-Lewis kinetics with two monomer types (M₁=2EHA/blue, M₂=AA/orange), reactivity ratios from Q-e estimates (r₁=0.35, r₂=2.5), 95/5 default feed, composition drift tracking, 4 presets
+- **Landing page** at root with sim cards linking to each simulator
+- Free-radical sim restructured into free-radical/ directory
+- Speed default increased to 10× (max 30×), monomer counts pinned at init time for stats accuracy

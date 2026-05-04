@@ -1,22 +1,33 @@
 # Polymer Simulation
 
-Interactive browser-based free-radical polymerization simulator for chemistry education. Zero dependencies, vanilla JS.
+Interactive browser-based polymer simulation platform for chemistry education. Zero dependencies, vanilla JS. Multiple simulators share a generic renderer and UI base class from `lib/`.
 
 ## Project layout
 
 ```
 polymer_simulation/
-├── index.html              ← entry point, loads js/bundle.js
-├── css/style.css           ← dark theme, layout, controls
-├── js/
-│   ├── main.js             ← animation loop + module wiring (ES modules)
-│   ├── simulation.js       ← particle system + kinetics engine
-│   ├── renderer.js         ← Canvas 2D drawing + callout overlay
-│   ├── ui.js               ← control panel DOM + events
-│   └── bundle.js           ← all JS modules bundled for file:// compatibility
-├── .claude/skills/
-│   ├── close-session/      ← session shutdown: update docs, memory, changelog, push
-│   └── resume/             ← session startup: read docs, memory, changelog, git status
+├── index.html                  ← landing page linking to each sim
+├── css/style.css               ← dark theme, layout, sim cards
+├── lib/
+│   ├── renderer.js             ← generic Canvas 2D renderer (theme-parameterized)
+│   └── ui-base.js              ← generic UI base class (sliders, readouts, badges)
+├── free-radical/
+│   ├── index.html              ← free-radical sim entry point
+│   ├── simulation.js           ← chain-growth kinetics engine
+│   ├── theme.js                ← colors, radii, glow for free-radical
+│   ├── ui.js                   ← extends UIBase with sim-specific controls
+│   ├── main.js                 ← RAF loop + module wiring
+│   └── bundle.js               ← concatenated bundle for file://
+├── copolymer/
+│   ├── index.html              ← copolymer sim entry point
+│   ├── simulation.js           ← Mayo-Lewis kinetics engine
+│   ├── theme.js                ← colors (blue M₁/orange M₂), segmentColor callback
+│   ├── ui.js                   ← extends UIBase with r₁/r₂ sliders, preset dropdown
+│   ├── main.js                 ← RAF loop + module wiring
+│   └── bundle.js               ← concatenated bundle for file://
+├── js/                         ← DEPRECATED: backward-compat wrappers
+│   ├── simulation.js, renderer.js, ui.js, main.js
+│   └── bundle.js               ← same as free-radical/bundle.js
 ├── CLAUDE.md
 ├── CHANGELOG.md
 └── README.md
@@ -25,22 +36,28 @@ polymer_simulation/
 ## How to run
 
 ```bash
-# Quick: open index.html directly (file:// URLs need bundle.js, not ES modules)
-# Or serve via any static server:
+# Serve from root — landing page at /
 npx --yes serve -p 3456 -s .
 python -m http.server 8765
 ```
 
 ## Architecture
 
-Four modules wired together in `js/main.js`:
+**Shared lib/ (generic):**
+- **Renderer** (`lib/renderer.js`) — Takes a `theme` object at construction: `{ bgColor, colors, radii, glowColors, segmentColor }`. `draw(particles)` uses theme for all styling. `drawCallout(title, drawFn)` takes a draw callback — no chemistry-specific event types.
+- **UIBase** (`lib/ui-base.js`) — Callback system (`on`/`_cb`), `bindButton`, `bindSlider`, `setReadoutSpec`/`updateReadouts`, `setBadge`. Sim UIs extend this.
 
-- **Simulation** (`js/simulation.js`) — Pure state machine. Owns the particle array. `tick(dt)` runs one timestep: movement → initiation → radical capture → propagation → termination → cleanup. Exposes `getState()`, `reset()`, `setParams()`.
-- **Renderer** (`js/renderer.js`) — Stateless Canvas 2D drawing. `draw(particles)` clears and redraws everything each frame (grid, bonds, particles with glow). `drawCallout(event)` renders the bottom-right ball-and-stick callout.
-- **UI** (`js/ui.js`) — Wraps DOM elements. Fires callbacks (`play`, `pause`, `reset`, `paramChange`, `speedChange`) and provides `updateReadouts()` / `updateStageBadges()`.
-- **main.js** — `requestAnimationFrame` loop, wires UI callbacks to sim methods, drives renderer each frame.
+**Per-sim directories:**
+- **simulation.js** — Pure state machine. Owns the particle array. `tick(dt)` runs one timestep. Exposes `getState()`, `reset()`, `setParams()`.
+- **theme.js** — Exports `THEME` object with all visual constants.
+- **ui.js** — Extends `UIBase`, wires sim-specific DOM elements.
+- **main.js** — `requestAnimationFrame` loop, wires UI callbacks to sim methods.
 
-## Key constants & defaults
+## Simulations
+
+### Free-Radical Polymerization
+
+Models chain-growth: initiation (I₂ → 2I• → RM•), propagation (RM• + M → R-M•), termination (combination or disproportionation).
 
 | Constant | Default | Meaning |
 |----------|---------|---------|
@@ -48,19 +65,28 @@ Four modules wired together in `js/main.js`:
 | kp | 12.5 × rate | Propagation probability |
 | kt | 3.75 × rate | Termination probability |
 | rate multiplier | 5.0 | Global scalar for all k values |
-| speed | 5.0 | Simulation speed multiplier |
+| speed | 10.0 | Simulation speed multiplier |
 
-## Particle types
+Particle types: `initiator`, `primaryRadical`, `monomer`, `chainRadical`, `deadChain`
 
-- `initiator` — I₂ molecule, decomposes into 2 primary radicals
-- `primaryRadical` — I•, captures a monomer to become a chain radical
-- `monomer` — M, free monomer (has `consumed` flag)
-- `chainRadical` — Growing chain with radical at head (`segments` array)
-- `deadChain` — Terminated chain (`segments` array), inert
+### Copolymerization
+
+Mayo-Lewis kinetics with two monomer types: M₁ (2EHA, blue) and M₂ (AA, orange). Propagation probability depends on chain head type and remaining monomer concentrations:
+
+```
+Head=M₁: P(add M₁) = r₁[M₁] / (r₁[M₁] + [M₂])
+Head=M₂: P(add M₁) = [M₁] / ([M₁] + r₂[M₂])
+```
+
+Default: 95/5 2EHA/AA feed ratio, r₁=0.35, r₂=2.5 (Q-e estimates). AA preferentially incorporates despite low feed.
+
+Stats: cumulative F₁, instantaneous F₁ (sliding window), free M₁/M₂ counts. Presets for ideal, alternating, and styrene/acrylonitrile.
+
+Particle types add: `monomerA`, `monomerB` (segments have `monomerType: 0|1`)
 
 ## The bundle
 
-`js/bundle.js` is concatenated ES module source (not a minified build). When editing, modify the individual files in `js/`, then regenerate the bundle so `file://` mode still works. Check the repo for the bundling approach — it's a simple concatenation that handles `import`/`export` removal.
+Each sim's `bundle.js` is concatenated source (not minified). Order: lib/renderer.js → lib/ui-base.js → simulation.js → theme.js → ui.js → main.js. `export`/`import` keywords stripped via `sed`. When editing, modify the individual source files, then regenerate the bundle.
 
 ## Coding conventions
 
@@ -70,12 +96,13 @@ Four modules wired together in `js/main.js`:
 - Particle state is mutated in place — no immutability
 - `dt` is clamped to max 0.1s to avoid physics explosions on tab-away
 - Canvas uses `devicePixelRatio` scaling for sharp rendering
+- `lib/` classes are generic; sim-specific logic stays in sim directories
+- Theme objects define all visual constants — no hardcoded colors in renderer
+- Callout events use `{ title, drawFn(ctx, w, h) }` shape
 
 ## Session workflow
 
-Two project skills manage session continuity:
+- `/resume` — run at session start. Reads CLAUDE.md, CHANGELOG.md, session memory, and git status.
+- `/close-session` — run at session end. Updates CLAUDE.md, saves session memory, logs to CHANGELOG.md, commits and pushes.
 
-- `/resume` — run at session start. Reads CLAUDE.md, CHANGELOG.md, session memory, and git status to catch up.
-- `/close-session` — run at session end. Updates CLAUDE.md, saves session memory, logs to CHANGELOG.md, commits and pushes to GitHub.
-
-Session memory is stored in `C:\Users\DELL\.claude\projects\D--coding-is-fun-polymer-simulation\memory\`.
+Session memory: `C:\Users\DELL\.claude\projects\D--coding-is-fun-polymer-simulation\memory\`
