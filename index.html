@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Free-Radical Polymerization Simulator</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <h1>🧪 Free-Radical Polymerization Simulator</h1>
+      <div id="stage-badges">
+        <span id="badge-initiation" class="badge active">● Initiation</span>
+        <span id="badge-propagation" class="badge">○ Propagation</span>
+        <span id="badge-termination" class="badge">○ Termination</span>
+      </div>
+    </header>
+    <main id="main">
+      <div id="canvas-container">
+        <canvas id="sim-canvas"></canvas>
+        <div id="callout" class="hidden">
+          <div id="callout-title"></div>
+          <canvas id="callout-canvas" width="140" height="100"></canvas>
+        </div>
+      </div>
+      <aside id="panel">
+        <section class="panel-section">
+          <h2>Parameters</h2>
+          <div class="param">
+            <label>Initiator count <span id="val-initiator">5</span></label>
+            <input type="range" id="slider-initiator" min="1" max="20" value="5" step="1">
+          </div>
+          <div class="param">
+            <label>Monomer count <span id="val-monomer">100</span></label>
+            <input type="range" id="slider-monomer" min="20" max="300" value="100" step="10">
+          </div>
+          <div class="param">
+            <label>Reaction rate <span id="val-rate">1.0×</span></label>
+            <input type="range" id="slider-rate" min="0.1" max="5.0" value="1.0" step="0.1">
+          </div>
+        </section>
+        <section class="panel-section">
+          <h2>Time Controls</h2>
+          <div class="btn-row">
+            <button id="btn-play">▶ Play</button>
+            <button id="btn-pause">⏸ Pause</button>
+            <button id="btn-reset">↺ Reset</button>
+          </div>
+          <div class="param">
+            <label>Speed <span id="val-speed">1×</span></label>
+            <input type="range" id="slider-speed" min="0.25" max="4" value="1" step="0.25">
+          </div>
+        </section>
+        <section class="panel-section">
+          <h2>Readouts</h2>
+          <dl id="readouts">
+            <dt>Time</dt><dd id="ro-time">0.0s</dd>
+            <dt>Conversion</dt><dd id="ro-conversion">0%</dd>
+            <dt>M<sub>n</sub></dt><dd id="ro-mn">—</dd>
+            <dt>Active chains</dt><dd id="ro-chains">0</dd>
+            <dt>Dead chains</dt><dd id="ro-dead">0</dd>
+            <dt>Free monomers</dt><dd id="ro-monomers">0</dd>
+          </dl>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
