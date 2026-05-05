@@ -12,19 +12,103 @@
       <h1>Polymer Simulation Lab</h1>
     </header>
     <main id="landing">
-      <div class="sim-cards">
-        <a href="free-radical/index.html" class="sim-card">
-          <div class="sim-card-icon">🧪</div>
-          <h2>Free-Radical Polymerization</h2>
-          <p>Chain-growth polymerization: initiation, propagation, and termination. Watch initiators decompose, chains grow, and polymers terminate via combination or disproportionation.</p>
-        </a>
-        <a href="copolymer/index.html" class="sim-card">
-          <div class="sim-card-icon">🧬</div>
-          <h2>Copolymerization</h2>
-          <p>Mayo-Lewis kinetics with two monomer types. Explore reactivity ratios, composition drift, and how feed ratio affects copolymer microstructure.</p>
-        </a>
+      <canvas id="landing-canvas"></canvas>
+      <div class="landing-content">
+        <h1>Polymer<br><span class="copper">Simulation</span> <span class="cobalt">Lab</span></h1>
+        <p class="landing-subtitle">Interactive kinetics &amp; chain-growth visualization</p>
+        <div class="landing-divider">Select Experiment</div>
+        <div class="sim-cards">
+          <a href="free-radical/index.html" class="sim-card card-radical">
+            <div class="sim-card-accent"></div>
+            <h2>Free-Radical Polymerization</h2>
+            <p>Chain-growth kinetics: initiation, propagation, and termination. Watch initiators decompose, chains grow, and polymers terminate.</p>
+            <div class="sim-card-footer">
+              Enter Lab <span class="arrow">→</span>
+            </div>
+          </a>
+          <a href="copolymer/index.html" class="sim-card card-copolymer">
+            <div class="sim-card-accent"></div>
+            <h2>Copolymerization</h2>
+            <p>Mayo-Lewis kinetics with two monomer types. Explore reactivity ratios, composition drift, and copolymer microstructure.</p>
+            <div class="sim-card-footer">
+              Enter Lab <span class="arrow">→</span>
+            </div>
+          </a>
+        </div>
       </div>
     </main>
   </div>
+  <script>
+    (function() {
+      const canvas = document.getElementById('landing-canvas');
+      const ctx = canvas.getContext('2d');
+      let w, h, particles = [];
+
+      function resize() {
+        w = canvas.width = window.innerWidth;
+        h = canvas.height = window.innerHeight;
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      const COUNT = 60;
+      for (let i = 0; i < COUNT; i++) {
+        particles.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          vx: (Math.random() - 0.5) * 0.3,
+          vy: (Math.random() - 0.5) * 0.3,
+          r: Math.random() * 2 + 0.5,
+          alpha: Math.random() * 0.3 + 0.1,
+          type: Math.random() > 0.5 ? 'copper' : 'cobalt'
+        });
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, w, h);
+        for (const p of particles) {
+          p.x += p.vx;
+          p.y += p.vy;
+          if (p.x < 0) p.x = w;
+          if (p.x > w) p.x = 0;
+          if (p.y < 0) p.y = h;
+          if (p.y > h) p.y = 0;
+
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          const color = p.type === 'copper' ? '217, 119, 66' : '72, 136, 221';
+          ctx.fillStyle = `rgba(${color}, ${p.alpha})`;
+          ctx.fill();
+
+          if (p.r > 1.5) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r * 3, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${color}, ${p.alpha * 0.15})`;
+            ctx.fill();
+          }
+        }
+
+        // subtle connecting lines between nearby particles
+        for (let i = 0; i < particles.length; i++) {
+          for (let j = i + 1; j < particles.length; j++) {
+            const dx = particles[i].x - particles[j].x;
+            const dy = particles[i].y - particles[j].y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 120) {
+              ctx.beginPath();
+              ctx.moveTo(particles[i].x, particles[i].y);
+              ctx.lineTo(particles[j].x, particles[j].y);
+              ctx.strokeStyle = `rgba(217, 119, 66, ${0.04 * (1 - dist / 120)})`;
+              ctx.lineWidth = 0.5;
+              ctx.stroke();
+            }
+          }
+        }
+
+        requestAnimationFrame(draw);
+      }
+      draw();
+    })();
+  </script>
 </body>
 </html>

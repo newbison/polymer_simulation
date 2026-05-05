@@ -90,7 +90,7 @@ Each sim's `bundle.js` is concatenated source (not minified). Order: lib/rendere
 
 ## Coding conventions
 
-- No external dependencies — keep it that way
+- No external JS dependencies — keep it that way. Web fonts (Google Fonts via CSS @import) are acceptable
 - ES module syntax in source files (`export class`, `import from`)
 - Dark theme CSS variables in `:root` (see `css/style.css`)
 - Particle state is mutated in place — no immutability
