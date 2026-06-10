@@ -156,6 +156,9 @@ export class Simulation {
             seg.y += dy * ratio * 0.8;
           }
         }
+        // Sync top-level position with head for renderer compatibility
+        p.x = head.x;
+        p.y = head.y;
       } else {
         p.x += p.vx * dt * 60;
         p.y += p.vy * dt * 60;
@@ -227,6 +230,8 @@ export class Simulation {
 
           this.particles.push({
             type: 'oligomer',
+            x: posB.x,
+            y: posB.y,
             segments: newSegments,
             freeA: newFreeA,
             freeB: newFreeB,

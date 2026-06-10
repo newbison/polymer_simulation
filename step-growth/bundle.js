@@ -39,17 +39,18 @@ class Renderer {
 
     // Draw bonds between chain segments
     for (const p of particles) {
-      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
+      if ((p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer') && p.segments?.length > 1) {
         for (let i = 0; i < p.segments.length - 1; i++) {
           const a = p.segments[i];
           const b = p.segments[i + 1];
-          const alpha = p.type === 'chainRadical' ? 0.4 : 0.2;
-          const bondColor = colors.chainRadical || '#4ecdc4';
-          const deadColor = colors.deadChain || '#555';
-          ctx.strokeStyle = p.type === 'chainRadical'
-            ? `rgba(${this._hexToRgb(bondColor)},${alpha})`
-            : `rgba(${this._hexToRgb(deadColor)},${alpha})`;
-          ctx.lineWidth = p.type === 'chainRadical' ? 2.5 : 1.5;
+          let alpha = 0.3;
+          let bondLineColor = '#666';
+          let bondWidth = 1.5;
+          if (p.type === 'chainRadical') { alpha = 0.4; bondLineColor = colors.chainRadical || '#4ecdc4'; bondWidth = 2.5; }
+          else if (p.type === 'oligomer') { alpha = 0.35; bondLineColor = colors.oligomer || '#6abf69'; bondWidth = 2; }
+          else { alpha = 0.2; bondLineColor = colors.deadChain || '#555'; bondWidth = 1.5; }
+          ctx.strokeStyle = `rgba(${this._hexToRgb(bondLineColor)},${alpha})`;
+          ctx.lineWidth = bondWidth;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);
@@ -60,7 +61,7 @@ class Renderer {
 
     // Draw particles
     for (const p of particles) {
-      const pos = p.type === 'chainRadical' || p.type === 'deadChain'
+      const pos = p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer'
         ? p.segments[p.segments.length - 1]
         : p;
 
@@ -88,7 +89,7 @@ class Renderer {
       ctx.fill();
 
       // Draw chain body segments
-      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
+      if ((p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer') && p.segments?.length > 1) {
         for (let i = 0; i < p.segments.length - 1; i++) {
           const seg = p.segments[i];
           const segColor = this._segmentColor(p, seg, i, colors);
@@ -109,7 +110,7 @@ class Renderer {
   }
 
   _colorForParticle(p, colors) {
-    if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length) {
+    if ((p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer') && p.segments?.length) {
       const head = p.segments[p.segments.length - 1];
       if (this.theme.segmentColor && head.monomerType !== undefined) {
         return this.theme.segmentColor(head.monomerType, p.type);
@@ -412,6 +413,9 @@ class Simulation {
             seg.y += dy * ratio * 0.8;
           }
         }
+        // Sync top-level position with head for renderer compatibility
+        p.x = head.x;
+        p.y = head.y;
       } else {
         p.x += p.vx * dt * 60;
         p.y += p.vy * dt * 60;
@@ -483,6 +487,8 @@ class Simulation {
 
           this.particles.push({
             type: 'oligomer',
+            x: posB.x,
+            y: posB.y,
             segments: newSegments,
             freeA: newFreeA,
             freeB: newFreeB,

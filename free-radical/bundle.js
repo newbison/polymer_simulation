@@ -1,6 +1,3 @@
-// ============================================================
-// lib/renderer.js
-// ============================================================
 class Renderer {
   constructor(canvas, theme) {
     this.canvas = canvas;
@@ -42,17 +39,18 @@ class Renderer {
 
     // Draw bonds between chain segments
     for (const p of particles) {
-      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
+      if ((p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer') && p.segments?.length > 1) {
         for (let i = 0; i < p.segments.length - 1; i++) {
           const a = p.segments[i];
           const b = p.segments[i + 1];
-          const alpha = p.type === 'chainRadical' ? 0.4 : 0.2;
-          const bondColor = colors.chainRadical || '#4ecdc4';
-          const deadColor = colors.deadChain || '#555';
-          ctx.strokeStyle = p.type === 'chainRadical'
-            ? `rgba(${this._hexToRgb(bondColor)},${alpha})`
-            : `rgba(${this._hexToRgb(deadColor)},${alpha})`;
-          ctx.lineWidth = p.type === 'chainRadical' ? 2.5 : 1.5;
+          let alpha = 0.3;
+          let bondLineColor = '#666';
+          let bondWidth = 1.5;
+          if (p.type === 'chainRadical') { alpha = 0.4; bondLineColor = colors.chainRadical || '#4ecdc4'; bondWidth = 2.5; }
+          else if (p.type === 'oligomer') { alpha = 0.35; bondLineColor = colors.oligomer || '#6abf69'; bondWidth = 2; }
+          else { alpha = 0.2; bondLineColor = colors.deadChain || '#555'; bondWidth = 1.5; }
+          ctx.strokeStyle = `rgba(${this._hexToRgb(bondLineColor)},${alpha})`;
+          ctx.lineWidth = bondWidth;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
           ctx.lineTo(b.x, b.y);
@@ -63,7 +61,7 @@ class Renderer {
 
     // Draw particles
     for (const p of particles) {
-      const pos = p.type === 'chainRadical' || p.type === 'deadChain'
+      const pos = p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer'
         ? p.segments[p.segments.length - 1]
         : p;
 
@@ -91,7 +89,7 @@ class Renderer {
       ctx.fill();
 
       // Draw chain body segments
-      if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length > 1) {
+      if ((p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer') && p.segments?.length > 1) {
         for (let i = 0; i < p.segments.length - 1; i++) {
           const seg = p.segments[i];
           const segColor = this._segmentColor(p, seg, i, colors);
@@ -112,7 +110,7 @@ class Renderer {
   }
 
   _colorForParticle(p, colors) {
-    if ((p.type === 'chainRadical' || p.type === 'deadChain') && p.segments?.length) {
+    if ((p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer') && p.segments?.length) {
       const head = p.segments[p.segments.length - 1];
       if (this.theme.segmentColor && head.monomerType !== undefined) {
         return this.theme.segmentColor(head.monomerType, p.type);
@@ -170,10 +168,6 @@ class Renderer {
     window.removeEventListener('resize', this._resizeHandler);
   }
 }
-
-// ============================================================
-// lib/ui-base.js
-// ============================================================
 class UIBase {
   constructor() {
     this._callbacks = {};
@@ -261,10 +255,6 @@ class UIBase {
     return {};
   }
 }
-
-// ============================================================
-// simulation.js
-// ============================================================
 class Simulation {
   constructor() {
     this.particles = [];
@@ -760,10 +750,6 @@ class Simulation {
     return this.stats;
   }
 }
-
-// ============================================================
-// theme.js
-// ============================================================
 const THEME = {
   bgColor: '#0f0f23',
   colors: {
@@ -786,11 +772,6 @@ const THEME = {
     chainRadical: 'rgba(78,205,196,0.6)',
   },
 };
-
-// ============================================================
-// ui.js
-// ============================================================
-
 
 class UI extends UIBase {
   constructor() {
@@ -863,14 +844,6 @@ class UI extends UIBase {
     this.setBadge('badge-termination', hasDeadChains > 0 || stats.conversion >= 80);
   }
 }
-
-// ============================================================
-// main.js
-// ============================================================
-
-
-
-
 
 const canvas = document.getElementById('sim-canvas');
 const sim = new Simulation();
