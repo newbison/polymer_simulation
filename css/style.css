@@ -559,6 +559,7 @@ select:hover, select:focus {
 
 .sim-card:nth-child(1) { animation-delay: 0.1s; }
 .sim-card:nth-child(2) { animation-delay: 0.25s; }
+.sim-card:nth-child(3) { animation-delay: 0.4s; }
 
 @keyframes cardFadeIn {
   to { opacity: 1; transform: translateY(0); }
@@ -588,4 +589,21 @@ select:hover, select:focus {
   .landing-content h1 { font-size: 1.6rem; }
   #header h1 { font-size: 0.7rem; }
   #stage-badges { display: none; }
+}
+
+.card-stepgrowth .sim-card-accent {
+  background: var(--amber);
+  box-shadow: 0 0 12px var(--amber-glow);
+}
+
+.card-stepgrowth::before {
+  background: radial-gradient(ellipse at 30% 20%, rgba(106, 191, 105, 0.06), transparent 70%);
+}
+
+.card-stepgrowth .sim-card h2 {
+  color: var(--amber);
+}
+
+.card-stepgrowth .sim-card-footer {
+  color: var(--amber);
 }

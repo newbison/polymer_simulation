@@ -25,6 +25,13 @@ polymer_simulation/
 │   ├── ui.js                   ← extends UIBase with r₁/r₂ sliders, preset dropdown
 │   ├── main.js                 ← RAF loop + module wiring
 │   └── bundle.js               ← concatenated bundle for file://
+├── step-growth/
+│   ├── index.html              ← step-growth sim entry point
+│   ├── simulation.js           ← AA+BB condensation kinetics engine
+│   ├── theme.js                ← colors (copper A/cobalt B), segmentColor callback
+│   ├── ui.js                   ← extends UIBase with monomer sliders, preset dropdown
+│   ├── main.js                 ← RAF loop with Carothers chart
+│   └── bundle.js               ← concatenated bundle for file://
 ├── js/                         ← DEPRECATED: backward-compat wrappers
 │   ├── simulation.js, renderer.js, ui.js, main.js
 │   └── bundle.js               ← same as free-radical/bundle.js
@@ -83,6 +90,20 @@ Default: 95/5 2EHA/AA feed ratio, r₁=0.35, r₂=2.5 (Q-e estimates). AA prefer
 Stats: cumulative F₁, instantaneous F₁ (sliding window), free M₁/M₂ counts. Presets for ideal, alternating, and styrene/acrylonitrile.
 
 Particle types add: `monomerA`, `monomerB` (segments have `monomerType: 0|1`)
+
+### Step-Growth Condensation
+
+AA + BB condensation polymerization. Two monomers (diamine A / diacid B) with complementary difunctional groups. Any molecule with free ends can react with any other — chains merge rather than extend. Byproduct (H₂O) particles drift away from each bond.
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| Rate | 5.0 × rate | Reaction probability per second |
+| speed | 10.0 | Simulation speed multiplier |
+| Stoichiometric ratio | 1.0 | N_A / N_B — imbalance limits max DP |
+
+Particle types: `monomerA`, `monomerB`, `oligomer`, `byproduct`
+
+Stats: conversion (p), DP, chain count, free A/B, byproduct count, max DP (Carothers)
 
 ## The bundle
 

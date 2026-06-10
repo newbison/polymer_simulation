@@ -1,3 +1,7 @@
+## 2026-06-10
+
+- **Step-growth condensation simulator:** AA + BB kinetics with diamine (copper) and diacid (cobalt) monomers. Any particle with free ends can react with any other — fundamentally different from chain-growth. Features Carothers equation (DP = 1/(1-p)), stoichiometric imbalance control, live DP-vs-conversion chart, and byproduct (H₂O) particle emission. Third simulator in the platform.
+
 ## 2026-05-05
 
 - Complete frontend redesign with "Mineral Lab" aesthetic (copper + cobalt on deep navy)
