@@ -224,4 +224,4 @@ crosslink/_build.ps1
 - `/resume` — run at session start. Reads CLAUDE.md, CHANGELOG.md, session memory, and git status.
 - `/close-session` — run at session end. Updates CLAUDE.md, saves session memory, logs to CHANGELOG.md, commits and pushes.
 
-Session memory: `C:\Users\DELL\.claude\projects\D--coding-is-fun-polymer-simulation\memory\`
+Session memory: `~/.claude/projects/polymer-simulation/memory/`
