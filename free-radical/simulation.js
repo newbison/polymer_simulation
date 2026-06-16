@@ -11,10 +11,19 @@ export class Simulation {
     this.stats = {
       conversion: 0,
       mn: 0,
+      mw: 0,
+      pdi: 0,
       activeChains: 0,
       deadChains: 0,
       freeMonomers: 0,
     };
+    this._conversionHistory = [];     // { t, p }
+    this._sampleInterval = 0.1;       // sample every 0.1 sim seconds
+    this._lastSampleT = 0;
+    this._maxHistoryPoints = 250;
+    this._eventLog = [];              // ring buffer of reaction events
+    this._maxEventLog = 5;
+    this._nextEventId = 1;
     this.calloutEvent = null;  // { type, data } for the current frame
     this._canvasW = 800;
     this._canvasH = 500;
@@ -26,14 +35,33 @@ export class Simulation {
   }
 
   setParams(p) {
+    const needReset = ('initiatorCount' in p && p.initiatorCount !== this.params.initiatorCount) ||
+                      ('monomerCount' in p && p.monomerCount !== this.params.monomerCount);
     Object.assign(this.params, p);
+    if (needReset) this.reset();
   }
 
   reset() {
     this.particles = [];
     this.time = 0;
+    this._conversionHistory = [];
+    this._lastSampleT = 0;
+    this._eventLog = [];
+    this._nextEventId = 1;
     this.calloutEvent = null;
     this._initParticles();
+  }
+
+  _pushEvent(kind, text) {
+    this._eventLog.push({
+      id: this._nextEventId++,
+      t: this.time,
+      kind,
+      text,
+    });
+    if (this._eventLog.length > this._maxEventLog) {
+      this._eventLog.shift();
+    }
   }
 
   _initParticles() {
@@ -97,8 +125,9 @@ export class Simulation {
       const p = this.particles[i];
       if (p.type !== 'initiator') continue;
 
-      // Probability of decomposition this frame
-      if (Math.random() < kd * dt) {
+      // Probability of decomposition this frame: P = 1 - exp(-kd·dt)
+      // (exact Poisson limit — avoids the k·dt > 1 saturation of the old linear gate)
+      if (Math.random() < 1 - Math.exp(-kd * dt)) {
         this._decomposeInitiator(i);
       }
     }
@@ -122,6 +151,8 @@ export class Simulation {
         radius: 4,
       });
     }
+
+    this._pushEvent('init', 'I₂ → 2 I• (initiator decomposes)');
 
     this.calloutEvent = {
       title: 'Initiation: I₂ → 2 I•',
@@ -174,7 +205,7 @@ export class Simulation {
         const dy = radical.y - monomer.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < captureDist && Math.random() < kCapture * dt) {
+        if (dist < captureDist && Math.random() < 1 - Math.exp(-kCapture * dt)) {
           // Convert to chain radical of length 1
           monomer.consumed = true;
           this.particles[ri] = {
@@ -187,6 +218,8 @@ export class Simulation {
             vy: (Math.random() - 0.5) * 1.5,
             radius: 6,
           };
+          this._pushEvent('init', 'R• + M → RM• (radical captures first monomer)');
+
           this.calloutEvent = {
             title: 'Initiation: R• + M → RM•',
             drawFn: (ctx, w, h) => {
@@ -245,13 +278,15 @@ export class Simulation {
         const dy = head.y - monomer.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < reactDist && Math.random() < kp * dt) {
+        if (dist < reactDist && Math.random() < 1 - Math.exp(-kp * dt)) {
           monomer.consumed = true;
           // Add monomer position as new head
           chain.segments.push({ x: monomer.x, y: monomer.y });
           const mob = this._chainMobility(chain.segments.length);
           chain.vx += (Math.random() - 0.5) * 0.5 * mob;
           chain.vy += (Math.random() - 0.5) * 0.5 * mob;
+          this._pushEvent('prop', `chain + M → longer chain (n=${chain.segments.length})`);
+
           this.calloutEvent = {
             title: `Propagation: chain + M (n=${chain.segments.length})`,
             drawFn: (ctx, w, h) => {
@@ -312,12 +347,13 @@ export class Simulation {
         const dy = headA.y - headB.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < termDist && Math.random() < kt * dt) {
+        if (dist < termDist && Math.random() < 1 - Math.exp(-kt * dt)) {
           terminated.add(ai);
           terminated.add(bi);
 
           // 50% combination, 50% disproportionation
-          if (Math.random() < 0.5) {
+          const byCombination = Math.random() < 0.5;
+          if (byCombination) {
             // Combination: join chains into one dead chain
             const combinedSegments = [
               ...chainA.segments,
@@ -347,6 +383,12 @@ export class Simulation {
               radius: 5,
             });
           }
+
+          this._pushEvent('term',
+            byCombination
+              ? 'chain• + chain• → dead chain (combination)'
+              : 'chain• + chain• → 2 dead chains (disproportionation)'
+          );
 
           this.calloutEvent = {
             title: 'Termination',
@@ -388,12 +430,32 @@ export class Simulation {
     const totalMonomerInit = this._initMonomerCount;
     const free = this.particles.filter(p => p.type === 'monomer' && !p.consumed).length;
     const consumed = totalMonomerInit - free;
-    const activeChains = this.particles.filter(p => p.type === 'chainRadical').length;
-    const deadChains = this.particles.filter(p => p.type === 'deadChain').length;
+
+    // Collect chain lengths (DP) for Mn/Mw/PDI
+    let sumDP = 0;     // Σ DP_i
+    let sumDP2 = 0;    // Σ DP_i²
+    let deadChains = 0;
+    let activeChains = 0;
+    for (const p of this.particles) {
+      if (p.type === 'chainRadical') {
+        activeChains++;
+      } else if (p.type === 'deadChain') {
+        deadChains++;
+        const dp = p.segments ? p.segments.length : 0;
+        sumDP += dp;
+        sumDP2 += dp * dp;
+      }
+    }
+
+    const mn = sumDP > 0 ? Math.round(sumDP / deadChains) : 0;
+    const mw = sumDP > 0 ? Math.round(sumDP2 / sumDP) : 0;
+    const pdi = (sumDP > 0 && deadChains > 1) ? (sumDP2 / sumDP) / (sumDP / deadChains) : 0;
 
     this.stats = {
       conversion: totalMonomerInit > 0 ? Math.round((consumed / totalMonomerInit) * 100) : 0,
-      mn: deadChains > 0 ? Math.round(consumed / deadChains) : 0,
+      mn,
+      mw,
+      pdi: pdi ? pdi : 0,
       activeChains,
       deadChains,
       freeMonomers: free,
@@ -413,6 +475,19 @@ export class Simulation {
     // Remove consumed monomers from display
     this.particles = this.particles.filter(p => !(p.type === 'monomer' && p.consumed));
     this._updateStats();
+
+    // Sample conversion history at regular sim-time intervals
+    if (this.time - this._lastSampleT >= this._sampleInterval) {
+      this._conversionHistory.push({ t: this.time, p: this.stats.conversion });
+      this._lastSampleT = this.time;
+      if (this._conversionHistory.length > this._maxHistoryPoints) {
+        this._conversionHistory.shift();
+      }
+    }
+  }
+
+  getConversionHistory() {
+    return this._conversionHistory;
   }
 
   _chainMobility(chainLength) {
@@ -422,57 +497,86 @@ export class Simulation {
   _moveParticles(dt) {
     const w = this._canvasW;
     const h = this._canvasH;
+    const D0 = 2.0;             // segment Brownian intensity per frame
+    const springK = 0.15;       // harmonic spring stiffness (stretchy)
+    const targetDist = 10.0;    // equilibrium bond length (px)
+    const springPasses = 2;     // relaxation iterations (fewer = looser chains)
 
     for (const p of this.particles) {
       if (p.type === 'monomer' && p.consumed) continue;
 
-      const mobility = (p.type === 'chainRadical' || p.type === 'deadChain')
-        ? this._chainMobility(p.segments.length)
-        : 1;
+      const isChain = p.type === 'chainRadical' || p.type === 'deadChain';
 
-      // Brownian perturbation — scaled by mobility
-      p.vx += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
-      p.vy += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
+      if (isChain) {
+        // ── Rouse bead-spring model ──
+        // Every segment gets independent Brownian motion.
+        // Adjacent segments connected by harmonic springs.
+        // CM diffusion ∝ 1/N emerges naturally — no manual mobility scaling.
+        const segs = p.segments;
+        const N = segs.length;
 
-      // Damping
-      p.vx *= 0.98;
-      p.vy *= 0.98;
+        if (N === 1) {
+          // Single segment — move like a free particle
+          p.vx += (Math.random() - 0.5) * 0.5;
+          p.vy += (Math.random() - 0.5) * 0.5;
+          p.vx *= 0.98; p.vy *= 0.98;
+          segs[0].x += p.vx * dt * 60;
+          segs[0].y += p.vy * dt * 60;
+        } else {
+          // Step 1: independent Brownian kicks to every segment
+          for (let i = 0; i < N; i++) {
+            segs[i].x += (Math.random() - 0.5) * D0;
+            segs[i].y += (Math.random() - 0.5) * D0;
+          }
 
-      // Speed cap — scaled by mobility
-      const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-      const maxSpeed = 3 * mobility;
-      if (speed > maxSpeed) {
-        p.vx = (p.vx / speed) * maxSpeed;
-        p.vy = (p.vy / speed) * maxSpeed;
-      }
+          // Step 2: spring relaxation between adjacent segments
+          for (let pass = 0; pass < springPasses; pass++) {
+            for (let i = 0; i < N - 1; i++) {
+              const a = segs[i], b = segs[i + 1];
+              let dx = b.x - a.x, dy = b.y - a.y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+              const force = springK * (dist - targetDist);
+              dx /= dist; dy /= dist;
+              a.x += force * dx * 0.5;
+              a.y += force * dy * 0.5;
+              b.x -= force * dx * 0.5;
+              b.y -= force * dy * 0.5;
+            }
+          }
 
-      if (p.type === 'chainRadical' || p.type === 'deadChain') {
-        if (!p.segments || p.segments.length === 0) continue;
-        const head = p.segments[p.segments.length - 1];
-        head.x += p.vx * dt * 60;
-        head.y += p.vy * dt * 60;
-
-        // Bounce head off walls
-        if (head.x < 5) { head.x = 5; p.vx *= -0.5; }
-        if (head.x > w - 5) { head.x = w - 5; p.vx *= -0.5; }
-        if (head.y < 5) { head.y = 5; p.vy *= -0.5; }
-        if (head.y > h - 5) { head.y = h - 5; p.vy *= -0.5; }
-
-        // Body follows leader with lag
-        for (let i = 0; i < p.segments.length - 1; i++) {
-          const seg = p.segments[i];
-          const leader = p.segments[i + 1];
-          const dx = leader.x - seg.x;
-          const dy = leader.y - seg.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const targetDist = 10;
-          if (dist > targetDist) {
-            const ratio = (dist - targetDist) / dist;
-            seg.x += dx * ratio * 0.8;
-            seg.y += dy * ratio * 0.8;
+          // Step 3: residual CM drift (damped momentum)
+          p.vx += (Math.random() - 0.5) * 0.1;
+          p.vy += (Math.random() - 0.5) * 0.1;
+          p.vx *= 0.96; p.vy *= 0.96;
+          for (let i = 0; i < N; i++) {
+            segs[i].x += p.vx * dt * 15;
+            segs[i].y += p.vy * dt * 15;
           }
         }
+
+        // Wall bounce — all segments
+        for (let i = 0; i < segs.length; i++) {
+          const s = segs[i];
+          if (s.x < 5) s.x = 5;
+          if (s.x > w - 5) s.x = w - 5;
+          if (s.y < 5) s.y = 5;
+          if (s.y > h - 5) s.y = h - 5;
+        }
+
       } else {
+        // ── Free particles (monomers, initiators, primary radicals) ──
+        p.vx += (Math.random() - 0.5) * 0.5;
+        p.vy += (Math.random() - 0.5) * 0.5;
+        p.vx *= 0.98;
+        p.vy *= 0.98;
+
+        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        const maxSpeed = 3;
+        if (speed > maxSpeed) {
+          p.vx = (p.vx / speed) * maxSpeed;
+          p.vy = (p.vy / speed) * maxSpeed;
+        }
+
         p.x += p.vx * dt * 60;
         p.y += p.vy * dt * 60;
 
@@ -491,5 +595,9 @@ export class Simulation {
 
   getStats() {
     return this.stats;
+  }
+
+  getEventLog() {
+    return this._eventLog;
   }
 }

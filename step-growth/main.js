@@ -158,7 +158,6 @@ ui.on('reset', () => {
   renderer.draw(particles);
   ui.updateReadouts(stats);
   ui.updateStageBadges(stats);
-  play();
 });
 ui.on('paramChange', (params) => {
   sim.setParams(params);

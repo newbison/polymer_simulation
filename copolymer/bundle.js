@@ -1,4 +1,4 @@
-class Renderer {
+﻿class Renderer {
   constructor(canvas, theme) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
@@ -65,12 +65,10 @@ class Renderer {
         ? p.segments[p.segments.length - 1]
         : p;
 
-      // Glow for radicals
-      if (glowColors && (p.type === 'primaryRadical' || p.type === 'chainRadical')) {
-        const glowColor = p.type === 'primaryRadical'
-          ? (glowColors.primaryRadical || 'rgba(255,107,107,0.6)')
-          : (glowColors.chainRadical || 'rgba(78,205,196,0.6)');
-        const r = radii?.[p.type] ?? (p.type === 'primaryRadical' ? 4 : 6);
+      // Glow for particles with a defined glowColor
+      if (glowColors && glowColors[p.type]) {
+        const glowColor = glowColors[p.type];
+        const r = radii?.[p.type] ?? 5;
         const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, r * 3);
         grad.addColorStop(0, glowColor);
         grad.addColorStop(1, 'transparent');
@@ -113,7 +111,7 @@ class Renderer {
     if ((p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer') && p.segments?.length) {
       const head = p.segments[p.segments.length - 1];
       if (this.theme.segmentColor && head.monomerType !== undefined) {
-        return this.theme.segmentColor(head.monomerType, p.type);
+        return this.theme.segmentColor(head.monomerType, p.type, head);
       }
     }
     return colors[p.type] || '#fff';
@@ -121,7 +119,7 @@ class Renderer {
 
   _segmentColor(p, seg, idx, colors) {
     if (this.theme.segmentColor && seg.monomerType !== undefined) {
-      return this.theme.segmentColor(seg.monomerType, p.type);
+      return this.theme.segmentColor(seg.monomerType, p.type, seg);
     }
     return colors[p.type] || '#fff';
   }
@@ -168,6 +166,7 @@ class Renderer {
     window.removeEventListener('resize', this._resizeHandler);
   }
 }
+
 class UIBase {
   constructor() {
     this._callbacks = {};
@@ -228,7 +227,7 @@ class UIBase {
       if (!el) continue;
       const val = data[spec.key];
       if (val === undefined || val === null) {
-        el.textContent = '—';
+        el.textContent = '-';
       } else if (spec.format) {
         el.textContent = typeof spec.format === 'function' ? spec.format(val) : val;
       } else {
@@ -243,10 +242,10 @@ class UIBase {
     if (!el) return;
     if (active) {
       el.classList.add('active');
-      el.textContent = el.textContent.replace('○', '●');
+      el.textContent = el.textContent.replace('o', '*');
     } else {
       el.classList.remove('active');
-      el.textContent = el.textContent.replace('●', '○');
+      el.textContent = el.textContent.replace('*', 'o');
     }
   }
 
@@ -255,6 +254,7 @@ class UIBase {
     return {};
   }
 }
+
 class Simulation {
   constructor() {
     this.particles = [];
@@ -267,10 +267,14 @@ class Simulation {
       r2: 2.5,
       rateMultiplier: 5.0,
       speedMultiplier: 10.0,
+      alternating: false,
+      chainTransfer: 0,
     };
     this.stats = {
       conversion: 0,
       mn: 0,
+      mw: 0,
+      pdi: 0,
       activeChains: 0,
       deadChains: 0,
       freeMonomerA: 0,
@@ -293,7 +297,11 @@ class Simulation {
   }
 
   setParams(p) {
+    const needReset = ('initiatorCount' in p && p.initiatorCount !== this.params.initiatorCount) ||
+                      ('monomerACount' in p && p.monomerACount !== this.params.monomerACount) ||
+                      ('monomerBCount' in p && p.monomerBCount !== this.params.monomerBCount);
     Object.assign(this.params, p);
+    if (needReset) this.reset();
   }
 
   reset() {
@@ -386,7 +394,7 @@ class Simulation {
       const p = this.particles[i];
       if (p.type !== 'initiator') continue;
 
-      if (Math.random() < kd * dt) {
+      if (Math.random() < 1 - Math.exp(-kd * dt)) {
         this._decomposeInitiator(i);
       }
     }
@@ -411,7 +419,7 @@ class Simulation {
     }
 
     this.calloutEvent = {
-      title: 'Initiation: I₂ → 2 I•',
+      title: 'Initiation: I2 -> 2 I*',
       drawFn: (ctx, w, h) => {
         const cx = w / 2, cy = h / 2;
         ctx.fillStyle = 'rgba(255,217,61,0.4)';
@@ -432,7 +440,7 @@ class Simulation {
         });
         ctx.fillStyle = '#fff';
         ctx.font = '12px sans-serif';
-        ctx.fillText('→', cx - 4, cy + 20);
+        ctx.fillText('->', cx - 4, cy + 20);
       },
     };
   }
@@ -441,6 +449,7 @@ class Simulation {
     const rate = this.params.rateMultiplier;
     const captureDist = 20;
     const kCapture = 12.5 * rate;
+    const alternating = this.params.alternating;
 
     const primaryRadicals = [];
     const monomersA = [];
@@ -460,33 +469,57 @@ class Simulation {
       let closestDist = captureDist;
       let closestType = null;
 
-      for (const mi of monomersA) {
-        const monomer = this.particles[mi];
-        if (monomer.consumed) continue;
-        const dx = radical.x - monomer.x;
-        const dy = radical.y - monomer.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestIdx = mi;
-          closestType = 0;
-        }
+      // In alternating mode the first captured monomer seeds the strict
+      // alternation. Starting from the majority type is a reasonable default
+      // (the subsequent ABAB... pattern is independent of this first pick).
+      let forceType = null;
+      if (alternating) {
+        if (monomersA.length >= monomersB.length) forceType = 0;
+        else forceType = 1;
       }
 
-      for (const mi of monomersB) {
-        const monomer = this.particles[mi];
-        if (monomer.consumed) continue;
-        const dx = radical.x - monomer.x;
-        const dy = radical.y - monomer.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestIdx = mi;
+      const tryCapture = (targetType) => {
+        const list = targetType === 0 ? monomersA : monomersB;
+        let localClosest = -1;
+        let localDist = captureDist;
+        for (const mi of list) {
+          const monomer = this.particles[mi];
+          if (monomer.consumed) continue;
+          const dx = radical.x - monomer.x;
+          const dy = radical.y - monomer.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < localDist) {
+            localDist = dist;
+            localClosest = mi;
+          }
+        }
+        return { idx: localClosest, dist: localDist };
+      };
+
+      if (alternating && forceType !== null) {
+        const result = tryCapture(forceType);
+        if (result.idx >= 0) {
+          closestIdx = result.idx;
+          closestDist = result.dist;
+          closestType = forceType;
+        }
+        // 首选类型无合适单体时本帧不反应，等待扩散后下次机会；不 fallback 到另一类型
+      } else {
+        // Original logic: find closest of either type
+        const resultA = tryCapture(0);
+        const resultB = tryCapture(1);
+        if (resultA.dist < resultB.dist && resultA.idx >= 0) {
+          closestIdx = resultA.idx;
+          closestDist = resultA.dist;
+          closestType = 0;
+        } else if (resultB.idx >= 0) {
+          closestIdx = resultB.idx;
+          closestDist = resultB.dist;
           closestType = 1;
         }
       }
 
-      if (closestIdx >= 0 && Math.random() < kCapture * dt) {
+      if (closestIdx >= 0 && Math.random() < 1 - Math.exp(-kCapture * dt)) {
         const monomer = this.particles[closestIdx];
         monomer.consumed = true;
 
@@ -495,19 +528,20 @@ class Simulation {
         this._recentAAdded += (closestType === 0) ? 1 : 0;
         this._recentBAdded += (closestType === 1) ? 1 : 0;
 
-        const label = closestType === 0 ? 'M₁ (2EHA)' : 'M₂ (AA)';
+        const label = closestType === 0 ? 'M1 (2EHA)' : 'M2 (AA)';
+        // initiator 字段记录引发剂残基位置（M1* 中的 I*），segments 只存真实单体
         this.particles[ri] = {
           type: 'chainRadical',
+          initiator: { x: radical.x, y: radical.y },
           segments: [
             { x: monomer.x, y: monomer.y, monomerType: closestType },
-            { x: radical.x, y: radical.y, monomerType: closestType },
           ],
           vx: (Math.random() - 0.5) * 1.5,
           vy: (Math.random() - 0.5) * 1.5,
           radius: 6,
         };
         this.calloutEvent = {
-          title: `Initiation: R• + ${label} → R${closestType === 0 ? 'M₁' : 'M₂'}•`,
+          title: `Initiation: R* + ${label} -> R${closestType === 0 ? 'M1' : 'M2'}*`,
           drawFn: (ctx, w, h) => {
             const cx = w / 2, cy = h / 2;
             ctx.fillStyle = closestType === 0 ? '#4da6ff' : '#ff9f43';
@@ -520,7 +554,7 @@ class Simulation {
             ctx.beginPath(); ctx.arc(cx - 15, cy, 10, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = '#fff';
             ctx.font = '14px sans-serif';
-            ctx.fillText('→', cx + 4, cy + 5);
+            ctx.fillText('->', cx + 4, cy + 5);
           },
         };
       }
@@ -533,6 +567,7 @@ class Simulation {
     const r1 = this.params.r1;
     const r2 = this.params.r2;
     const reactDist = 18;
+    const alternating = this.params.alternating;
 
     const chainRadicals = [];
     const monomersA = [];
@@ -553,21 +588,27 @@ class Simulation {
       const head = chain.segments[chain.segments.length - 1];
       const headType = head.monomerType;
 
-      let probAddA;
-      if (freeA + freeB === 0) continue;
+      let targetType; // 0 = monomerA, 1 = monomerB
 
-      if (headType === 0) {
-        const num = r1 * freeA;
-        const den = num + freeB;
-        probAddA = den > 0 ? num / den : 0;
+      if (alternating) {
+        // Strict alternation: always add the opposite type
+        targetType = (headType === 0) ? 1 : 0;
       } else {
-        const num = freeA;
-        const den = num + r2 * freeB;
-        probAddA = den > 0 ? num / den : 0;
+        // Mayo-Lewis (penultimate model simplified): probabilistic selection
+        let probAddA;
+        if (headType === 0) {
+          const num = r1 * freeA;
+          const den = num + freeB;
+          probAddA = den > 0 ? num / den : 0;
+        } else {
+          const num = freeA;
+          const den = num + r2 * freeB;
+          probAddA = den > 0 ? num / den : 0;
+        }
+        targetType = Math.random() < probAddA ? 0 : 1;
       }
 
-      const targetType = Math.random() < probAddA ? 'monomerA' : 'monomerB';
-      const targetMonomers = targetType === 'monomerA' ? monomersA : monomersB;
+      const targetMonomers = targetType === 0 ? monomersA : monomersB;
 
       let closestIdx = -1;
       let closestDist = reactDist;
@@ -584,13 +625,16 @@ class Simulation {
         }
       }
 
+      // 链端只尝试加成偏好类型的单体；附近无合适单体时本帧不反应，等待下次机会
+      // 不存在"跳跃到另一类型"的 fallback 机制——空间距离不影响反应选择性
+
       if (closestIdx >= 0) {
-        const effectiveKp = kpBase * Math.sqrt(freeA + freeB);
-        if (Math.random() < effectiveKp * dt) {
+        const effectiveKp = kpBase;
+        if (Math.random() < 1 - Math.exp(-effectiveKp * dt)) {
           const monomer = this.particles[closestIdx];
           monomer.consumed = true;
 
-          const mType = targetType === 'monomerA' ? 0 : 1;
+          const mType = targetType;
           chain.segments.push({ x: monomer.x, y: monomer.y, monomerType: mType });
 
           this._monomerAAdded += (mType === 0) ? 1 : 0;
@@ -602,7 +646,7 @@ class Simulation {
           chain.vx += (Math.random() - 0.5) * 0.5 * mob;
           chain.vy += (Math.random() - 0.5) * 0.5 * mob;
 
-          const label = mType === 0 ? 'M₁ (2EHA)' : 'M₂ (AA)';
+          const label = mType === 0 ? 'M1 (2EHA)' : 'M2 (AA)';
           this.calloutEvent = {
             title: `Propagation: +${label} (n=${chain.segments.length})`,
             drawFn: (ctx, w, h) => {
@@ -617,9 +661,27 @@ class Simulation {
               ctx.beginPath(); ctx.arc(cx - 15, cy, 12, 0, Math.PI * 2); ctx.fill();
               ctx.fillStyle = '#fff';
               ctx.font = '14px sans-serif';
-              ctx.fillText('→', cx + 4, cy + 5);
+              ctx.fillText('->', cx + 4, cy + 5);
             },
           };
+
+          // Chain transfer: P* + S -> P (dead) + S*，new radical re-initiates.
+          // Rate ∝ dt (frame-rate independent) like the other elementary reactions.
+          const Ct = this.params.chainTransfer;
+          if (Ct > 0 && Math.random() < 1 - Math.exp(-Ct * dt)) {
+            const head = chain.segments[chain.segments.length - 1];
+            // Convert chain to dead chain
+            chain.type = '_ct_dead'; // temporary flag, filtered at end of tick
+            // Spawn new primary radical at chain head
+            this.particles.push({
+              type: 'primaryRadical',
+              x: head.x,
+              y: head.y,
+              vx: (Math.random() - 0.5) * 2,
+              vy: (Math.random() - 0.5) * 2,
+              radius: 4,
+            });
+          }
         }
       }
     }
@@ -653,7 +715,7 @@ class Simulation {
         const dy = headA.y - headB.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < termDist && Math.random() < kt * dt) {
+        if (dist < termDist && Math.random() < 1 - Math.exp(-kt * dt)) {
           terminated.add(ai);
           terminated.add(bi);
 
@@ -730,9 +792,25 @@ class Simulation {
     const activeChains = this.particles.filter(p => p.type === 'chainRadical').length;
     const deadChains = this.particles.filter(p => p.type === 'deadChain').length;
 
+    // Mn / Mw / PDI computed from dead chains only (final polymer, GPC-style).
+    // Mn = ΣDP / n_dead,  Mw = ΣDP² / ΣDP,  PDI = Mw / Mn.
+    let sumDP = 0, sumDP2 = 0;
+    for (const p of this.particles) {
+      if (p.type === 'deadChain' && p.segments) {
+        const dp = p.segments.length;
+        sumDP += dp;
+        sumDP2 += dp * dp;
+      }
+    }
+    const mn = deadChains > 0 ? Math.round(sumDP / deadChains) : 0;
+    const mw = sumDP > 0 ? Math.round(sumDP2 / sumDP) : 0;
+    const pdi = (mn > 0 && mw > 0) ? mw / mn : 0;
+
     this.stats = {
       conversion: totalMonomers > 0 ? Math.round((consumed / totalMonomers) * 100) : 0,
-      mn: deadChains > 0 ? Math.round(consumed / deadChains) : 0,
+      mn,
+      mw,
+      pdi,
       activeChains,
       deadChains,
       freeMonomerA: freeA,
@@ -759,9 +837,13 @@ class Simulation {
     this._processRadicalCapture(scaledDt);
     this._processPropagation(scaledDt);
     this._processTermination(scaledDt);
-    this.particles = this.particles.filter(p =>
-      !((p.type === 'monomerA' || p.type === 'monomerB') && p.consumed)
-    );
+    this.particles = this.particles.filter(p => {
+      if (p.type === '_ct_dead') {
+        p.type = 'deadChain'; // promote to proper deadChain so it appears in stats
+        return true;
+      }
+      return !((p.type === 'monomerA' || p.type === 'monomerB') && p.consumed);
+    });
     this._updateStats();
   }
 
@@ -773,58 +855,102 @@ class Simulation {
     const w = this._canvasW;
     const h = this._canvasH;
 
+    // Free particles (initiator, primaryRadical, monomerA, monomerB) —
+    // simple Brownian diffusion with wall bounce.
     for (const p of this.particles) {
       if (p.consumed) continue;
+      if (p.type === 'chainRadical' || p.type === 'deadChain') continue; // handled below
 
-      const mobility = (p.type === 'chainRadical' || p.type === 'deadChain')
-        ? this._chainMobility(p.segments.length)
-        : 1;
-
-      p.vx += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
-      p.vy += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
-
+      p.vx += (Math.random() - 0.5) * 0.5;
+      p.vy += (Math.random() - 0.5) * 0.5;
       p.vx *= 0.98;
       p.vy *= 0.98;
-
       const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-      const maxSpeed = 3 * mobility;
+      const maxSpeed = 3;
       if (speed > maxSpeed) {
         p.vx = (p.vx / speed) * maxSpeed;
         p.vy = (p.vy / speed) * maxSpeed;
       }
+      p.x += p.vx * dt * 60;
+      p.y += p.vy * dt * 60;
+      if (p.x < p.radius) { p.x = p.radius; p.vx *= -0.5; }
+      if (p.x > w - p.radius) { p.x = w - p.radius; p.vx *= -0.5; }
+      if (p.y < p.radius) { p.y = p.radius; p.vy *= -0.5; }
+      if (p.y > h - p.radius) { p.y = h - p.radius; p.vy *= -0.5; }
+    }
 
-      if (p.type === 'chainRadical' || p.type === 'deadChain') {
-        if (!p.segments || p.segments.length === 0) continue;
-        const head = p.segments[p.segments.length - 1];
-        head.x += p.vx * dt * 60;
-        head.y += p.vy * dt * 60;
+    // Polymer chains — Rouse bead-spring model (same as free-radical sim):
+    // every segment gets an independent Brownian kick, adjacent segments are
+    // connected by symmetric harmonic springs, and the whole chain drifts via
+    // a damped CM velocity. This produces real random-coil tumbling instead of
+    // the old "head drags a stiff tail" model.
+    const D0 = 2.0;
+    const springK = 0.15;
+    const targetDist = 10.0;
+    const springPasses = 2;
 
-        if (head.x < 5) { head.x = 5; p.vx *= -0.5; }
-        if (head.x > w - 5) { head.x = w - 5; p.vx *= -0.5; }
-        if (head.y < 5) { head.y = 5; p.vy *= -0.5; }
-        if (head.y > h - 5) { head.y = h - 5; p.vy *= -0.5; }
+    for (const p of this.particles) {
+      if (p.type !== 'chainRadical' && p.type !== 'deadChain') continue;
+      if (!p.segments || p.segments.length === 0) continue;
 
-        for (let i = 0; i < p.segments.length - 1; i++) {
-          const seg = p.segments[i];
-          const leader = p.segments[i + 1];
-          const dx = leader.x - seg.x;
-          const dy = leader.y - seg.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const targetDist = 10;
-          if (dist > targetDist) {
-            const ratio = (dist - targetDist) / dist;
-            seg.x += dx * ratio * 0.8;
-            seg.y += dy * ratio * 0.8;
+      const segs = p.segments;
+      const N = segs.length;
+
+      if (N === 1) {
+        p.vx += (Math.random() - 0.5) * 0.5;
+        p.vy += (Math.random() - 0.5) * 0.5;
+        p.vx *= 0.98; p.vy *= 0.98;
+        segs[0].x += p.vx * dt * 60;
+        segs[0].y += p.vy * dt * 60;
+      } else {
+        // Step 1: independent Brownian kicks to every segment
+        for (let i = 0; i < N; i++) {
+          segs[i].x += (Math.random() - 0.5) * D0;
+          segs[i].y += (Math.random() - 0.5) * D0;
+        }
+        // Step 2: spring relaxation between adjacent segments (symmetric)
+        for (let pass = 0; pass < springPasses; pass++) {
+          for (let i = 0; i < N - 1; i++) {
+            const a = segs[i], b = segs[i + 1];
+            let dx = b.x - a.x, dy = b.y - a.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+            const force = springK * (dist - targetDist);
+            dx /= dist; dy /= dist;
+            a.x += force * dx * 0.5;
+            a.y += force * dy * 0.5;
+            b.x -= force * dx * 0.5;
+            b.y -= force * dy * 0.5;
           }
         }
-      } else {
-        p.x += p.vx * dt * 60;
-        p.y += p.vy * dt * 60;
+        // Step 3: CM drift (damped momentum)
+        p.vx += (Math.random() - 0.5) * 0.1;
+        p.vy += (Math.random() - 0.5) * 0.1;
+        p.vx *= 0.96; p.vy *= 0.96;
+        for (let i = 0; i < N; i++) {
+          segs[i].x += p.vx * dt * 15;
+          segs[i].y += p.vy * dt * 15;
+        }
+      }
 
-        if (p.x < p.radius) { p.x = p.radius; p.vx *= -0.5; }
-        if (p.x > w - p.radius) { p.x = w - p.radius; p.vx *= -0.5; }
-        if (p.y < p.radius) { p.y = p.radius; p.vy *= -0.5; }
-        if (p.y > h - p.radius) { p.y = h - p.radius; p.vy *= -0.5; }
+      // Keep the initiator residue (I-M bond) attached to the first segment.
+      if (p.initiator) {
+        const first = segs[0];
+        let dx = first.x - p.initiator.x;
+        let dy = first.y - p.initiator.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const force = springK * (dist - targetDist);
+        dx /= dist; dy /= dist;
+        p.initiator.x += force * dx;
+        p.initiator.y += force * dy;
+      }
+
+      // Wall clamp — all segments
+      for (let i = 0; i < segs.length; i++) {
+        const s = segs[i];
+        if (s.x < 5) s.x = 5;
+        if (s.x > w - 5) s.x = w - 5;
+        if (s.y < 5) s.y = 5;
+        if (s.y > h - 5) s.y = h - 5;
       }
     }
   }
@@ -837,6 +963,7 @@ class Simulation {
     return this.stats;
   }
 }
+
 const THEME = {
   bgColor: '#0f0f23',
   colors: {
@@ -866,6 +993,7 @@ const THEME = {
   },
 };
 
+
 class UI extends UIBase {
   constructor() {
     super();
@@ -880,6 +1008,8 @@ class UI extends UIBase {
     this.sliderR2 = document.getElementById('slider-r2');
     this.sliderRate = document.getElementById('slider-rate');
     this.sliderSpeed = document.getElementById('slider-speed');
+    this.chkAlternating = document.getElementById('chk-alternating');
+    this.sliderCt = document.getElementById('slider-ct');
     this.presetSelect = document.getElementById('preset-select');
 
     this._bindEvents();
@@ -889,7 +1019,9 @@ class UI extends UIBase {
       { id: 'ro-conversion',     key: 'conversion',     format: v => v + '%' },
       { id: 'ro-cumulative-f1',  key: 'cumulativeF1',   format: v => v.toFixed(3) },
       { id: 'ro-instant-f1',     key: 'instantaneousF1', format: v => v.toFixed(3) },
-      { id: 'ro-mn',             key: 'mn',             format: v => v || '—' },
+      { id: 'ro-mn',             key: 'mn',             format: v => v || '-' },
+      { id: 'ro-mw',             key: 'mw',             format: v => v || '-' },
+      { id: 'ro-pdi',            key: 'pdi',            format: v => (typeof v === 'number' && v > 0 ? v.toFixed(2) : '-') },
       { id: 'ro-chains',         key: 'activeChains',   format: v => String(v) },
       { id: 'ro-dead',           key: 'deadChains',     format: v => String(v) },
       { id: 'ro-free-a',         key: 'freeMonomerA',   format: v => String(v) },
@@ -907,9 +1039,20 @@ class UI extends UIBase {
     this.bindSlider('slider-monomer-b', 'val-monomer-b', '', 'monomerBCount');
     this.bindSlider('slider-r1', 'val-r1', '', 'r1');
     this.bindSlider('slider-r2', 'val-r2', '', 'r2');
-    this.bindSlider('slider-rate', 'val-rate', '×', 'rateMultiplier',
-      (key, val) => document.getElementById('val-rate').textContent = val.toFixed(1) + '×'
+    this.bindSlider('slider-rate', 'val-rate', 'x', 'rateMultiplier',
+      (key, val) => document.getElementById('val-rate').textContent = val.toFixed(1) + 'x'
     );
+
+    // Chain transfer slider
+    const ctSlider = document.getElementById('slider-ct');
+    const ctDisplay = document.getElementById('val-ct');
+    if (ctSlider) {
+      ctSlider.addEventListener('input', () => {
+        const val = parseFloat(ctSlider.value);
+        ctDisplay.textContent = val.toFixed(2);
+        this._cb('paramChange', this._getParams());
+      });
+    }
 
     // Speed slider
     const speedSlider = document.getElementById('slider-speed');
@@ -917,8 +1060,15 @@ class UI extends UIBase {
     if (speedSlider) {
       speedSlider.addEventListener('input', () => {
         const val = parseFloat(speedSlider.value);
-        speedDisplay.textContent = val + '×';
+        speedDisplay.textContent = val + 'x';
         this._cb('speedChange', val);
+      });
+    }
+
+    // Alternating mode checkbox
+    if (this.chkAlternating) {
+      this.chkAlternating.addEventListener('change', () => {
+        this._cb('paramChange', this._getParams());
       });
     }
 
@@ -933,7 +1083,7 @@ class UI extends UIBase {
 
   _applyPreset(name) {
     const presets = {
-      '2eha-aa':  { r1: 0.35, r2: 2.5 },
+      '2eha-aa':  { r1: 0.35, r2: 2.5 },   // 2EHA/AA (Q-e estimates)
       'ideal':    { r1: 1.0, r2: 1.0 },
       'alternating': { r1: 0.01, r2: 0.01 },
       'styrene-an': { r1: 0.4, r2: 0.04 },
@@ -960,11 +1110,16 @@ class UI extends UIBase {
       r1: parseFloat(this.sliderR1.value),
       r2: parseFloat(this.sliderR2.value),
       rateMultiplier: parseFloat(this.sliderRate.value),
+      alternating: this.chkAlternating ? this.chkAlternating.checked : false,
+      chainTransfer: this.sliderCt ? parseFloat(this.sliderCt.value) : 0,
     };
   }
 }
 
+
 const canvas = document.getElementById('sim-canvas');
+const diagramCanvas = document.getElementById('diagram-canvas');
+const diagramCtx = diagramCanvas.getContext('2d');
 const sim = new Simulation();
 const renderer = new Renderer(canvas, THEME);
 const ui = new UI();
@@ -996,6 +1151,7 @@ function loop(timestamp) {
   stats.time = sim.time;
   renderer.draw(particles);
   ui.updateReadouts(stats);
+  drawDiagram(stats, sim.params);
 
   animId = requestAnimationFrame(loop);
 }
@@ -1022,10 +1178,13 @@ ui.on('reset', () => {
   syncSize();
   renderer.draw(particles);
   ui.updateReadouts(stats);
-  play();
+  drawDiagram(stats, sim.params);
 });
 ui.on('paramChange', (params) => {
   sim.setParams(params);
+  const { stats } = sim.getState();
+  stats.time = sim.time;
+  drawDiagram(stats, sim.params);
 });
 ui.on('speedChange', (speed) => {
   sim.setParams({ speedMultiplier: speed });
@@ -1037,3 +1196,115 @@ const { particles, stats } = sim.getState();
 stats.time = sim.time;
 renderer.draw(particles);
 ui.updateReadouts(stats);
+drawDiagram(stats, sim.params);
+
+function drawDiagram(stats, params) {
+  const ctx = diagramCtx;
+  const W = diagramCanvas.width;
+  const H = diagramCanvas.height;
+  const pad = { l: 36, r: 10, t: 16, b: 28 };
+  const plotW = W - pad.l - pad.r;
+  const plotH = H - pad.t - pad.b;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#0d1b2a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const x = pad.l + (i / 4) * plotW;
+    const y = pad.t + (i / 4) * plotH;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, H - pad.b); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+  }
+
+  // Mayo-Lewis curve
+  const r1 = params.r1;
+  const r2 = params.r2;
+  ctx.beginPath();
+  ctx.strokeStyle = '#ff9f43';
+  ctx.lineWidth = 2;
+  for (let i = 0; i <= 200; i++) {
+    const f1 = i / 200;
+    const f2 = 1 - f1;
+    const denom = r1 * f1 * f1 + 2 * f1 * f2 + r2 * f2 * f2;
+    const F1 = denom > 0 ? (r1 * f1 * f1 + f1 * f2) / denom : 0;
+    const px = pad.l + f1 * plotW;
+    const py = pad.t + (1 - F1) * plotH;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+
+  // Diagonal (ideal, r1=r2=1)
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 1;
+  ctx.moveTo(pad.l, H - pad.b);
+  ctx.lineTo(W - pad.r, pad.t);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Current feed f1
+  const freeA = stats.freeMonomerA;
+  const freeB = stats.freeMonomerB;
+  const total = freeA + freeB;
+  const f1_feed = total > 0 ? freeA / total : params.monomerACount / (params.monomerACount + params.monomerBCount);
+  const F1_inst = stats.instantaneousF1;
+
+  const px = pad.l + f1_feed * plotW;
+  const py = pad.t + (1 - F1_inst) * plotH;
+
+  // Crosshair
+  ctx.strokeStyle = 'rgba(77,166,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 2]);
+  ctx.beginPath(); ctx.moveTo(px, pad.t); ctx.lineTo(px, H - pad.b); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad.l, py); ctx.lineTo(W - pad.r, py); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Point
+  const r = Math.max(4, Math.min(7, 4 + stats.conversion / 50));
+  ctx.beginPath();
+  ctx.arc(px, py, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#4da6ff';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Axes labels
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('f1 (feed)', pad.l + plotW / 2, H - 4);
+  ctx.save();
+  ctx.translate(10, pad.t + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('F1 (copolymer)', 0, 0);
+  ctx.restore();
+
+  // Tick labels
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = '8px sans-serif';
+  ctx.textAlign = 'center';
+  for (let i = 0; i <= 4; i++) {
+    const v = (i / 4).toFixed(1);
+    ctx.fillText(v, pad.l + (i / 4) * plotW, H - pad.b + 10);
+    ctx.textAlign = 'right';
+    ctx.fillText(v, pad.l - 4, pad.t + (1 - i / 4) * plotH + 3);
+    ctx.textAlign = 'center';
+  }
+
+  // r values annotation
+  ctx.fillStyle = 'rgba(255,159,67,0.7)';
+  ctx.font = '8px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`r1=${r1.toFixed(2)}  r2=${r2.toFixed(2)}`, W - pad.r - 2, pad.t + 10);
+}
+

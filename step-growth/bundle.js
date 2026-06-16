@@ -1,4 +1,4 @@
-class Renderer {
+﻿class Renderer {
   constructor(canvas, theme) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
@@ -65,12 +65,10 @@ class Renderer {
         ? p.segments[p.segments.length - 1]
         : p;
 
-      // Glow for radicals
-      if (glowColors && (p.type === 'primaryRadical' || p.type === 'chainRadical')) {
-        const glowColor = p.type === 'primaryRadical'
-          ? (glowColors.primaryRadical || 'rgba(255,107,107,0.6)')
-          : (glowColors.chainRadical || 'rgba(78,205,196,0.6)');
-        const r = radii?.[p.type] ?? (p.type === 'primaryRadical' ? 4 : 6);
+      // Glow for particles with a defined glowColor
+      if (glowColors && glowColors[p.type]) {
+        const glowColor = glowColors[p.type];
+        const r = radii?.[p.type] ?? 5;
         const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, r * 3);
         grad.addColorStop(0, glowColor);
         grad.addColorStop(1, 'transparent');
@@ -113,7 +111,7 @@ class Renderer {
     if ((p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer') && p.segments?.length) {
       const head = p.segments[p.segments.length - 1];
       if (this.theme.segmentColor && head.monomerType !== undefined) {
-        return this.theme.segmentColor(head.monomerType, p.type);
+        return this.theme.segmentColor(head.monomerType, p.type, head);
       }
     }
     return colors[p.type] || '#fff';
@@ -121,7 +119,7 @@ class Renderer {
 
   _segmentColor(p, seg, idx, colors) {
     if (this.theme.segmentColor && seg.monomerType !== undefined) {
-      return this.theme.segmentColor(seg.monomerType, p.type);
+      return this.theme.segmentColor(seg.monomerType, p.type, seg);
     }
     return colors[p.type] || '#fff';
   }
@@ -168,6 +166,7 @@ class Renderer {
     window.removeEventListener('resize', this._resizeHandler);
   }
 }
+
 class UIBase {
   constructor() {
     this._callbacks = {};
@@ -228,7 +227,7 @@ class UIBase {
       if (!el) continue;
       const val = data[spec.key];
       if (val === undefined || val === null) {
-        el.textContent = '—';
+        el.textContent = '-';
       } else if (spec.format) {
         el.textContent = typeof spec.format === 'function' ? spec.format(val) : val;
       } else {
@@ -243,10 +242,10 @@ class UIBase {
     if (!el) return;
     if (active) {
       el.classList.add('active');
-      el.textContent = el.textContent.replace('○', '●');
+      el.textContent = el.textContent.replace('o', '*');
     } else {
       el.classList.remove('active');
-      el.textContent = el.textContent.replace('●', '○');
+      el.textContent = el.textContent.replace('*', 'o');
     }
   }
 
@@ -255,6 +254,7 @@ class UIBase {
     return {};
   }
 }
+
 class Simulation {
   constructor() {
     this.particles = [];
@@ -269,7 +269,6 @@ class Simulation {
       conversion: 0,
       dp: 0,
       chains: 0,
-      deadChains: 0,
       freeMonomerA: 0,
       freeMonomerB: 0,
       byproductCount: 0,
@@ -292,7 +291,10 @@ class Simulation {
   }
 
   setParams(p) {
+    const needReset = ('monomerACount' in p && p.monomerACount !== this.params.monomerACount) ||
+                      ('monomerBCount' in p && p.monomerBCount !== this.params.monomerBCount);
     Object.assign(this.params, p);
+    if (needReset) this.reset();
   }
 
   reset() {
@@ -335,8 +337,6 @@ class Simulation {
         vx: (Math.random() - 0.5) * 1.0,
         vy: (Math.random() - 0.5) * 1.0,
         radius: 5,
-        freeA: 2,
-        freeB: 0,
         segments: [{ x, y, monomerType: 0 }],
       });
     }
@@ -354,13 +354,27 @@ class Simulation {
         vx: (Math.random() - 0.5) * 1.0,
         vy: (Math.random() - 0.5) * 1.0,
         radius: 5,
-        freeA: 0,
-        freeB: 2,
         segments: [{ x, y, monomerType: 1 }],
       });
     }
 
     this._updateStats();
+  }
+
+  // Count free A-end groups on a particle from its segment ends
+  _freeA(p) {
+    if (!p.segments || p.segments.length === 0) return 0;
+    const first = p.segments[0].monomerType;
+    const last = p.segments[p.segments.length - 1].monomerType;
+    return (first === 0 ? 1 : 0) + (last === 0 ? 1 : 0);
+  }
+
+  // Count free B-end groups on a particle from its segment ends
+  _freeB(p) {
+    if (!p.segments || p.segments.length === 0) return 0;
+    const first = p.segments[0].monomerType;
+    const last = p.segments[p.segments.length - 1].monomerType;
+    return (first === 1 ? 1 : 0) + (last === 1 ? 1 : 0);
   }
 
   _chainMobility(chainLength) {
@@ -371,59 +385,80 @@ class Simulation {
     const w = this._canvasW;
     const h = this._canvasH;
 
+    // Rouse bead-spring model (same as free-radical & copolymer sims):
+    // every segment gets an independent Brownian kick, adjacent segments are
+    // connected by symmetric harmonic springs, and the whole chain drifts via
+    // a damped CM velocity. Produces real random-coil tumbling.
+    const D0 = 2.0;
+    const springK = 0.15;
+    const targetDist = 10.0;
+    const springPasses = 2;
+
     for (const p of this.particles) {
       if (p.type === 'byproduct') continue;
 
-      const chainLength = p.segments ? p.segments.length : 1;
-      const mobility = this._chainMobility(chainLength);
+      const segs = p.segments;
+      const N = segs ? segs.length : 0;
 
-      p.vx += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
-      p.vy += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
+      if (N === 0) continue;
 
-      p.vx *= 0.98;
-      p.vy *= 0.98;
-
-      const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-      const maxSpeed = 3 * mobility;
-      if (speed > maxSpeed) {
-        p.vx = (p.vx / speed) * maxSpeed;
-        p.vy = (p.vy / speed) * maxSpeed;
-      }
-
-      if (p.segments && p.segments.length > 1) {
-        const head = p.segments[p.segments.length - 1];
-        head.x += p.vx * dt * 60;
-        head.y += p.vy * dt * 60;
-
-        if (head.x < 5) { head.x = 5; p.vx *= -0.5; }
-        if (head.x > w - 5) { head.x = w - 5; p.vx *= -0.5; }
-        if (head.y < 5) { head.y = 5; p.vy *= -0.5; }
-        if (head.y > h - 5) { head.y = h - 5; p.vy *= -0.5; }
-
-        for (let i = 0; i < p.segments.length - 1; i++) {
-          const seg = p.segments[i];
-          const leader = p.segments[i + 1];
-          const dx = leader.x - seg.x;
-          const dy = leader.y - seg.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const targetDist = 10;
-          if (dist > targetDist) {
-            const ratio = (dist - targetDist) / dist;
-            seg.x += dx * ratio * 0.8;
-            seg.y += dy * ratio * 0.8;
+      if (N === 1) {
+        // Single monomer — move like a free particle
+        p.vx += (Math.random() - 0.5) * 0.5;
+        p.vy += (Math.random() - 0.5) * 0.5;
+        p.vx *= 0.98; p.vy *= 0.98;
+        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        const maxSpeed = 3;
+        if (speed > maxSpeed) {
+          p.vx = (p.vx / speed) * maxSpeed;
+          p.vy = (p.vy / speed) * maxSpeed;
+        }
+        segs[0].x += p.vx * dt * 60;
+        segs[0].y += p.vy * dt * 60;
+        p.x = segs[0].x;
+        p.y = segs[0].y;
+      } else {
+        // Step 1: independent Brownian kicks to every segment
+        for (let i = 0; i < N; i++) {
+          segs[i].x += (Math.random() - 0.5) * D0;
+          segs[i].y += (Math.random() - 0.5) * D0;
+        }
+        // Step 2: spring relaxation between adjacent segments (symmetric)
+        for (let pass = 0; pass < springPasses; pass++) {
+          for (let i = 0; i < N - 1; i++) {
+            const a = segs[i], b = segs[i + 1];
+            let dx = b.x - a.x, dy = b.y - a.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+            const force = springK * (dist - targetDist);
+            dx /= dist; dy /= dist;
+            a.x += force * dx * 0.5;
+            a.y += force * dy * 0.5;
+            b.x -= force * dx * 0.5;
+            b.y -= force * dy * 0.5;
           }
         }
-        // Sync top-level position with head for renderer compatibility
-        p.x = head.x;
-        p.y = head.y;
-      } else {
-        p.x += p.vx * dt * 60;
-        p.y += p.vy * dt * 60;
+        // Step 3: CM drift (damped momentum)
+        p.vx += (Math.random() - 0.5) * 0.1;
+        p.vy += (Math.random() - 0.5) * 0.1;
+        p.vx *= 0.96; p.vy *= 0.96;
+        let cx = 0, cy = 0;
+        for (let i = 0; i < N; i++) {
+          segs[i].x += p.vx * dt * 15;
+          segs[i].y += p.vy * dt * 15;
+          cx += segs[i].x; cy += segs[i].y;
+        }
+        // Sync top-level position with segment centroid (renderer uses p.x/p.y)
+        p.x = cx / N;
+        p.y = cy / N;
+      }
 
-        if (p.x < p.radius) { p.x = p.radius; p.vx *= -0.5; }
-        if (p.x > w - p.radius) { p.x = w - p.radius; p.vx *= -0.5; }
-        if (p.y < p.radius) { p.y = p.radius; p.vy *= -0.5; }
-        if (p.y > h - p.radius) { p.y = h - p.radius; p.vy *= -0.5; }
+      // Wall clamp — all segments
+      for (let i = 0; i < N; i++) {
+        const s = segs[i];
+        if (s.x < 5) s.x = 5;
+        if (s.x > w - 5) s.x = w - 5;
+        if (s.y < 5) s.y = 5;
+        if (s.y > h - 5) s.y = h - 5;
       }
     }
   }
@@ -439,9 +474,8 @@ class Simulation {
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
       if (p.type === 'byproduct') continue;
-      if (p.type === 'oligomer' && p.freeA === 0 && p.freeB === 0) continue;
-      if (p.freeA > 0) aCandidates.push(i);
-      if (p.freeB > 0) bCandidates.push(i);
+      if (this._freeA(p) > 0) aCandidates.push(i);
+      if (this._freeB(p) > 0) bCandidates.push(i);
     }
 
     const reacted = new Set();
@@ -449,36 +483,34 @@ class Simulation {
     for (const ai of aCandidates) {
       if (reacted.has(ai)) continue;
       const particleA = this.particles[ai];
-      if (particleA.freeA < 1) continue;
+      if (this._freeA(particleA) < 1) continue;
 
       for (const bi of bCandidates) {
         if (reacted.has(bi)) continue;
         if (ai === bi) continue;
         const particleB = this.particles[bi];
-        if (particleB.freeB < 1) continue;
+        if (this._freeB(particleB) < 1) continue;
 
-        const posA = particleA.segments
-          ? particleA.segments[particleA.segments.length - 1]
-          : particleA;
-        const posB = particleB.segments
-          ? particleB.segments[particleB.segments.length - 1]
-          : particleB;
+        // Both reactive ends are at the HEADS of the segments arrays
+        // (the last segment is where the chain extends)
+        const headA = particleA.segments[particleA.segments.length - 1];
+        const headB = particleB.segments[particleB.segments.length - 1];
 
-        const dx = posA.x - posB.x;
-        const dy = posA.y - posB.y;
+        const dx = headA.x - headB.x;
+        const dy = headA.y - headB.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < reactDist && Math.random() < k * dt) {
+        if (dist < reactDist && Math.random() < 1 - Math.exp(-k * dt)) {
+          // Build alternating chain: reverse B's segments so its HEAD (reaction site)
+          // comes first in the concatenated array, adjacent to A's HEAD
+          const bReversed = [...particleB.segments].reverse();
           const newSegments = [
             ...particleA.segments,
-            ...particleB.segments,
+            ...bReversed,
           ];
-          const newFreeA = particleA.freeA + particleB.freeA - 1;
-          const newFreeB = particleA.freeB + particleB.freeB - 1;
 
-          const midX = (posA.x + posB.x) / 2;
-          const midY = (posA.y + posB.y) / 2;
-
+          // New chain head is the last segment of newSegments
+          const newHead = newSegments[newSegments.length - 1];
           const chainLength = newSegments.length;
           const mob = this._chainMobility(chainLength);
 
@@ -487,18 +519,19 @@ class Simulation {
 
           this.particles.push({
             type: 'oligomer',
-            x: posB.x,
-            y: posB.y,
+            x: newHead.x,
+            y: newHead.y,
             segments: newSegments,
-            freeA: newFreeA,
-            freeB: newFreeB,
             vx: (particleA.vx + particleB.vx) / 2 + (Math.random() - 0.5) * 0.5 * mob,
             vy: (particleA.vy + particleB.vy) / 2 + (Math.random() - 0.5) * 0.5 * mob,
             radius: 5,
           });
 
-          this._emitByproduct(midX, midY);
+          this._emitByproduct((headA.x + headB.x) / 2, (headA.y + headB.y) / 2);
           this._totalBonds++;
+
+          const fA = this._freeA({ segments: newSegments });
+          const fB = this._freeB({ segments: newSegments });
 
           this.calloutEvent = {
             title: `Step-growth: bond formed (n=${chainLength})`,
@@ -508,7 +541,7 @@ class Simulation {
               const segCount = Math.min(newSegments.length, 6);
               for (let i = 0; i < segCount; i++) {
                 const offsetX = -15 + i * 7;
-                ctx.fillStyle = colors[newSegments[i].monomerType];
+                ctx.fillStyle = colors[i % 2]; // force alternating for display
                 ctx.beginPath();
                 ctx.arc(cx + offsetX, cy, 5, 0, Math.PI * 2);
                 ctx.fill();
@@ -520,7 +553,7 @@ class Simulation {
               }
               ctx.fillStyle = '#6abf69';
               ctx.font = '9px sans-serif';
-              ctx.fillText(`A:${newFreeA} B:${newFreeB}`, cx - 10, cy - 14);
+              ctx.fillText(`A:${fA} B:${fB}`, cx - 10, cy - 14);
             },
           };
 
@@ -582,20 +615,33 @@ class Simulation {
     const totalB = this._initMonomerBCount;
     const totalGroups = totalA * 2 + totalB * 2;
 
-    const freeA = this._countFree('monomerA') * 2 + this._countFreeGroups('oligomer', 'freeA');
-    const freeB = this._countFree('monomerB') * 2 + this._countFreeGroups('oligomer', 'freeB');
-    const consumedGroups = totalGroups - freeA - freeB;
+    // Count free A and B groups from segment ends of all particles
+    let freeAGroups = 0;
+    let freeBGroups = 0;
+    for (const p of this.particles) {
+      if (p.type === 'byproduct') continue;
+      freeAGroups += this._freeA(p);
+      freeBGroups += this._freeB(p);
+    }
+    const consumedGroups = totalGroups - freeAGroups - freeBGroups;
     const p = totalGroups > 0 ? consumedGroups / totalGroups : 0;
 
-    const chains = this.particles.filter(p => p.type === 'oligomer' && (p.freeA + p.freeB > 0)).length;
-    const deadChains = this.particles.filter(p => p.type === 'oligomer' && p.freeA === 0 && p.freeB === 0).length;
-    const totalChains = chains + deadChains;
-    const totalSegments = this.particles
-      .filter(p => p.type === 'oligomer')
-      .reduce((sum, p) => sum + p.segments.length, 0);
+    const oligomers = this.particles.filter(p => p.type === 'oligomer');
+    const chains = oligomers.filter(p => this._freeA(p) + this._freeB(p) > 0).length;
 
-    const freeMonomerA = this._countFree('monomerA');
-    const freeMonomerB = this._countFree('monomerB');
+    const freeMonomerA = this.particles.filter(p => p.type === 'monomerA').length;
+    const freeMonomerB = this.particles.filter(p => p.type === 'monomerB').length;
+
+    // Carothers number-average DP: Xn = total monomer units / total molecules.
+    // IMPORTANT: includes unreacted monomers (each counts as 1 unit / 1 molecule),
+    // so Xn starts at 1 (all monomers) and rises toward 1/(1-p). The previous
+    // implementation only counted oligomers, which made DP start at ~2 and
+    // systematically overestimate against the 1/(1-p) theory curve.
+    const allMolecules = this.particles.filter(pp => pp.type !== 'byproduct');
+    const totalUnits = allMolecules.reduce(
+      (sum, pp) => sum + (pp.segments ? pp.segments.length : 0), 0);
+    const numMolecules = allMolecules.length;
+    const dp = numMolecules > 0 ? totalUnits / numMolecules : 0;
 
     // Carothers max DP from stoichiometric imbalance
     const ratio = Math.min(totalA, totalB) / Math.max(totalA, totalB, 1);
@@ -603,24 +649,14 @@ class Simulation {
 
     this.stats = {
       conversion: p,
-      dp: totalChains > 0 ? totalSegments / totalChains : 0,
+      dp,
       chains,
-      deadChains,
+      deadChains: 0,
       freeMonomerA,
       freeMonomerB,
       byproductCount: this._totalBonds,
       maxDP,
     };
-  }
-
-  _countFree(type) {
-    return this.particles.filter(p => p.type === type).length;
-  }
-
-  _countFreeGroups(type, field) {
-    return this.particles
-      .filter(p => p.type === type)
-      .reduce((sum, p) => sum + (p[field] || 0), 0);
   }
 
   tick(dt) {
@@ -630,7 +666,7 @@ class Simulation {
 
     this._moveParticles(scaledDt);
     this._processReactions(scaledDt);
-    this._updateByproducts(dt);
+    this._updateByproducts(scaledDt);  // scale byproduct physics with sim speed
     this._cleanupByproducts();
     this._updateStats();
 
@@ -649,6 +685,7 @@ class Simulation {
     return this.stats;
   }
 }
+
 const THEME = {
   bgColor: '#0f0f23',
   colors: {
@@ -672,6 +709,7 @@ const THEME = {
     return monomerType === 0 ? '#d97742' : '#4888dd';
   },
 };
+
 
 class UI extends UIBase {
   constructor() {
@@ -780,6 +818,7 @@ class UI extends UIBase {
     this._initTotal = total;
   }
 }
+
 
 const canvas = document.getElementById('sim-canvas');
 const sim = new Simulation();
@@ -936,7 +975,6 @@ ui.on('reset', () => {
   renderer.draw(particles);
   ui.updateReadouts(stats);
   ui.updateStageBadges(stats);
-  play();
 });
 ui.on('paramChange', (params) => {
   sim.setParams(params);
@@ -953,3 +991,4 @@ ui.setInitTotal(initTotal);
 stats.time = sim.time;
 renderer.draw(particles);
 ui.updateReadouts(stats);
+

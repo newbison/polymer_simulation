@@ -3,14 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Copolymerization Simulator</title>
+  <title>Crosslinking Polymerization Simulator</title>
   <link rel="stylesheet" href="../css/style.css">
 </head>
 <body>
   <div id="app">
     <header id="header">
-      <h1>Copolymerization Simulator</h1>
+      <h1>Crosslinking Polymerization</h1>
       <a href="../index.html" class="back-link">← Lab</a>
+      <div id="stage-badges">
+        <span id="badge-copolymerization" class="badge active">● Copolymerization</span>
+        <span id="badge-crosslinking" class="badge">○ Crosslinking</span>
+        <span id="badge-gelation" class="badge">○ Gelation</span>
+      </div>
     </header>
     <main id="main">
       <div id="canvas-container">
@@ -19,16 +24,20 @@
           <div id="callout-title"></div>
           <canvas id="callout-canvas" width="140" height="100"></canvas>
         </div>
+        <div id="lab-journal">
+          <div id="lab-journal-title">Lab Journal</div>
+          <ul id="lab-journal-list"></ul>
+        </div>
       </div>
       <aside id="panel">
         <section class="panel-section">
-          <h2>Preset</h2>
+          <h2>Application Preset</h2>
           <div class="param">
             <select id="preset-select">
-              <option value="2eha-aa" selected>2EHA / Acrylic Acid</option>
-              <option value="ideal">Ideal (r₁=r₂=1)</option>
-              <option value="alternating">Alternating (r₁=r₂≈0)</option>
-              <option value="styrene-an">Styrene / Acrylonitrile</option>
+              <option value="psa" selected>PSA (Tape / Sticky Notes)</option>
+              <option value="sap">SAP (Diapers / Water Retention)</option>
+              <option value="hard-coating">Hard Coating (Automotive Clear Coat)</option>
+              <option value="hydrogel">Hydrogel (Drug Delivery)</option>
             </select>
           </div>
         </section>
@@ -40,11 +49,11 @@
           </div>
           <div class="param">
             <label>M₁ count (2EHA) <span id="val-monomer-a">950</span></label>
-            <input type="range" id="slider-monomer-a" min="10" max="1000" value="950" step="10">
+            <input type="range" id="slider-monomer-a" min="100" max="1000" value="950" step="10">
           </div>
           <div class="param">
             <label>M₂ count (AA) <span id="val-monomer-b">50</span></label>
-            <input type="range" id="slider-monomer-b" min="1" max="200" value="50" step="1">
+            <input type="range" id="slider-monomer-b" min="10" max="500" value="50" step="5">
           </div>
           <div class="param">
             <label>r₁ (k₁₁/k₁₂) <span id="val-r1">0.35</span></label>
@@ -55,15 +64,16 @@
             <input type="range" id="slider-r2" min="0.01" max="5.0" value="2.50" step="0.01">
           </div>
           <div class="param">
+            <label>Crosslinker (% of AA) <span id="val-crosslinker">1</span></label>
+            <input type="range" id="slider-crosslinker" min="0" max="50" value="1" step="1">
+          </div>
+          <div class="param">
+            <label>Crosslink rate <span id="val-xrate">0.5</span></label>
+            <input type="range" id="slider-xrate" min="0.1" max="10.0" value="0.5" step="0.1">
+          </div>
+          <div class="param">
             <label>Reaction rate <span id="val-rate">5.0×</span></label>
             <input type="range" id="slider-rate" min="0.1" max="10.0" value="5.0" step="0.1">
-          </div>
-          <div class="param">
-            <label><input type="checkbox" id="chk-alternating"> Strict alternating (ABABAB…)</label>
-          </div>
-          <div class="param">
-            <label>Chain transfer (C_Tr) <span id="val-ct">0.00</span></label>
-            <input type="range" id="slider-ct" min="0" max="0.5" value="0" step="0.01">
           </div>
         </section>
         <section class="panel-section">
@@ -79,7 +89,7 @@
           </div>
         </section>
         <section class="panel-section">
-          <h2>Composition Diagram</h2>
+          <h2>Crosslink Density</h2>
           <canvas id="diagram-canvas" width="240" height="200" style="display:block;margin:0 auto;background:#0d1b2a;border-radius:4px;"></canvas>
         </section>
         <section class="panel-section">
@@ -87,15 +97,14 @@
           <dl id="readouts">
             <dt>Time</dt><dd id="ro-time">0.0s</dd>
             <dt>Conversion</dt><dd id="ro-conversion">0%</dd>
-            <dt>Cumulative F₁</dt><dd id="ro-cumulative-f1">0.950</dd>
-            <dt>Instant F₁</dt><dd id="ro-instant-f1">0.950</dd>
             <dt>M<sub>n</sub></dt><dd id="ro-mn">—</dd>
             <dt>M<sub>w</sub></dt><dd id="ro-mw">—</dd>
             <dt>PDI</dt><dd id="ro-pdi">—</dd>
-            <dt>Active chains</dt><dd id="ro-chains">0</dd>
-            <dt>Dead chains</dt><dd id="ro-dead">0</dd>
-            <dt>Free M₁</dt><dd id="ro-free-a">0</dd>
-            <dt>Free M₂</dt><dd id="ro-free-b">0</dd>
+            <dt>XL Density</dt><dd id="ro-xldensity">0.0%</dd>
+            <dt>Network Chains</dt><dd id="ro-net-chains">0</dd>
+            <dt>Active Chains</dt><dd id="ro-chains">0</dd>
+            <dt>Dead Chains</dt><dd id="ro-dead">0</dd>
+            <dt>Gel Point</dt><dd id="ro-gelpoint">○</dd>
           </dl>
         </section>
       </aside>

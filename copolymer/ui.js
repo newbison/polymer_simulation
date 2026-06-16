@@ -14,6 +14,8 @@ export class UI extends UIBase {
     this.sliderR2 = document.getElementById('slider-r2');
     this.sliderRate = document.getElementById('slider-rate');
     this.sliderSpeed = document.getElementById('slider-speed');
+    this.chkAlternating = document.getElementById('chk-alternating');
+    this.sliderCt = document.getElementById('slider-ct');
     this.presetSelect = document.getElementById('preset-select');
 
     this._bindEvents();
@@ -23,7 +25,9 @@ export class UI extends UIBase {
       { id: 'ro-conversion',     key: 'conversion',     format: v => v + '%' },
       { id: 'ro-cumulative-f1',  key: 'cumulativeF1',   format: v => v.toFixed(3) },
       { id: 'ro-instant-f1',     key: 'instantaneousF1', format: v => v.toFixed(3) },
-      { id: 'ro-mn',             key: 'mn',             format: v => v || '—' },
+      { id: 'ro-mn',             key: 'mn',             format: v => v || '-' },
+      { id: 'ro-mw',             key: 'mw',             format: v => v || '-' },
+      { id: 'ro-pdi',            key: 'pdi',            format: v => (typeof v === 'number' && v > 0 ? v.toFixed(2) : '-') },
       { id: 'ro-chains',         key: 'activeChains',   format: v => String(v) },
       { id: 'ro-dead',           key: 'deadChains',     format: v => String(v) },
       { id: 'ro-free-a',         key: 'freeMonomerA',   format: v => String(v) },
@@ -41,9 +45,20 @@ export class UI extends UIBase {
     this.bindSlider('slider-monomer-b', 'val-monomer-b', '', 'monomerBCount');
     this.bindSlider('slider-r1', 'val-r1', '', 'r1');
     this.bindSlider('slider-r2', 'val-r2', '', 'r2');
-    this.bindSlider('slider-rate', 'val-rate', '×', 'rateMultiplier',
-      (key, val) => document.getElementById('val-rate').textContent = val.toFixed(1) + '×'
+    this.bindSlider('slider-rate', 'val-rate', 'x', 'rateMultiplier',
+      (key, val) => document.getElementById('val-rate').textContent = val.toFixed(1) + 'x'
     );
+
+    // Chain transfer slider
+    const ctSlider = document.getElementById('slider-ct');
+    const ctDisplay = document.getElementById('val-ct');
+    if (ctSlider) {
+      ctSlider.addEventListener('input', () => {
+        const val = parseFloat(ctSlider.value);
+        ctDisplay.textContent = val.toFixed(2);
+        this._cb('paramChange', this._getParams());
+      });
+    }
 
     // Speed slider
     const speedSlider = document.getElementById('slider-speed');
@@ -51,8 +66,15 @@ export class UI extends UIBase {
     if (speedSlider) {
       speedSlider.addEventListener('input', () => {
         const val = parseFloat(speedSlider.value);
-        speedDisplay.textContent = val + '×';
+        speedDisplay.textContent = val + 'x';
         this._cb('speedChange', val);
+      });
+    }
+
+    // Alternating mode checkbox
+    if (this.chkAlternating) {
+      this.chkAlternating.addEventListener('change', () => {
+        this._cb('paramChange', this._getParams());
       });
     }
 
@@ -67,7 +89,7 @@ export class UI extends UIBase {
 
   _applyPreset(name) {
     const presets = {
-      '2eha-aa':  { r1: 0.35, r2: 2.5 },
+      '2eha-aa':  { r1: 0.35, r2: 2.5 },   // 2EHA/AA (Q-e estimates)
       'ideal':    { r1: 1.0, r2: 1.0 },
       'alternating': { r1: 0.01, r2: 0.01 },
       'styrene-an': { r1: 0.4, r2: 0.04 },
@@ -94,6 +116,8 @@ export class UI extends UIBase {
       r1: parseFloat(this.sliderR1.value),
       r2: parseFloat(this.sliderR2.value),
       rateMultiplier: parseFloat(this.sliderRate.value),
+      alternating: this.chkAlternating ? this.chkAlternating.checked : false,
+      chainTransfer: this.sliderCt ? parseFloat(this.sliderCt.value) : 0,
     };
   }
 }

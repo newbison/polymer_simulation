@@ -1,4 +1,4 @@
-class Renderer {
+﻿class Renderer {
   constructor(canvas, theme) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
@@ -65,12 +65,10 @@ class Renderer {
         ? p.segments[p.segments.length - 1]
         : p;
 
-      // Glow for radicals
-      if (glowColors && (p.type === 'primaryRadical' || p.type === 'chainRadical')) {
-        const glowColor = p.type === 'primaryRadical'
-          ? (glowColors.primaryRadical || 'rgba(255,107,107,0.6)')
-          : (glowColors.chainRadical || 'rgba(78,205,196,0.6)');
-        const r = radii?.[p.type] ?? (p.type === 'primaryRadical' ? 4 : 6);
+      // Glow for particles with a defined glowColor
+      if (glowColors && glowColors[p.type]) {
+        const glowColor = glowColors[p.type];
+        const r = radii?.[p.type] ?? 5;
         const grad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, r * 3);
         grad.addColorStop(0, glowColor);
         grad.addColorStop(1, 'transparent');
@@ -113,7 +111,7 @@ class Renderer {
     if ((p.type === 'chainRadical' || p.type === 'deadChain' || p.type === 'oligomer') && p.segments?.length) {
       const head = p.segments[p.segments.length - 1];
       if (this.theme.segmentColor && head.monomerType !== undefined) {
-        return this.theme.segmentColor(head.monomerType, p.type);
+        return this.theme.segmentColor(head.monomerType, p.type, head);
       }
     }
     return colors[p.type] || '#fff';
@@ -121,7 +119,7 @@ class Renderer {
 
   _segmentColor(p, seg, idx, colors) {
     if (this.theme.segmentColor && seg.monomerType !== undefined) {
-      return this.theme.segmentColor(seg.monomerType, p.type);
+      return this.theme.segmentColor(seg.monomerType, p.type, seg);
     }
     return colors[p.type] || '#fff';
   }
@@ -168,6 +166,7 @@ class Renderer {
     window.removeEventListener('resize', this._resizeHandler);
   }
 }
+
 class UIBase {
   constructor() {
     this._callbacks = {};
@@ -228,7 +227,7 @@ class UIBase {
       if (!el) continue;
       const val = data[spec.key];
       if (val === undefined || val === null) {
-        el.textContent = '—';
+        el.textContent = '-';
       } else if (spec.format) {
         el.textContent = typeof spec.format === 'function' ? spec.format(val) : val;
       } else {
@@ -243,10 +242,10 @@ class UIBase {
     if (!el) return;
     if (active) {
       el.classList.add('active');
-      el.textContent = el.textContent.replace('○', '●');
+      el.textContent = el.textContent.replace('o', '*');
     } else {
       el.classList.remove('active');
-      el.textContent = el.textContent.replace('●', '○');
+      el.textContent = el.textContent.replace('*', 'o');
     }
   }
 
@@ -255,6 +254,7 @@ class UIBase {
     return {};
   }
 }
+
 class Simulation {
   constructor() {
     this.particles = [];
@@ -268,10 +268,19 @@ class Simulation {
     this.stats = {
       conversion: 0,
       mn: 0,
+      mw: 0,
+      pdi: 0,
       activeChains: 0,
       deadChains: 0,
       freeMonomers: 0,
     };
+    this._conversionHistory = [];     // { t, p }
+    this._sampleInterval = 0.1;       // sample every 0.1 sim seconds
+    this._lastSampleT = 0;
+    this._maxHistoryPoints = 250;
+    this._eventLog = [];              // ring buffer of reaction events
+    this._maxEventLog = 5;
+    this._nextEventId = 1;
     this.calloutEvent = null;  // { type, data } for the current frame
     this._canvasW = 800;
     this._canvasH = 500;
@@ -283,14 +292,33 @@ class Simulation {
   }
 
   setParams(p) {
+    const needReset = ('initiatorCount' in p && p.initiatorCount !== this.params.initiatorCount) ||
+                      ('monomerCount' in p && p.monomerCount !== this.params.monomerCount);
     Object.assign(this.params, p);
+    if (needReset) this.reset();
   }
 
   reset() {
     this.particles = [];
     this.time = 0;
+    this._conversionHistory = [];
+    this._lastSampleT = 0;
+    this._eventLog = [];
+    this._nextEventId = 1;
     this.calloutEvent = null;
     this._initParticles();
+  }
+
+  _pushEvent(kind, text) {
+    this._eventLog.push({
+      id: this._nextEventId++,
+      t: this.time,
+      kind,
+      text,
+    });
+    if (this._eventLog.length > this._maxEventLog) {
+      this._eventLog.shift();
+    }
   }
 
   _initParticles() {
@@ -354,8 +382,9 @@ class Simulation {
       const p = this.particles[i];
       if (p.type !== 'initiator') continue;
 
-      // Probability of decomposition this frame
-      if (Math.random() < kd * dt) {
+      // Probability of decomposition this frame: P = 1 - exp(-kd·dt)
+      // (exact Poisson limit — avoids the k·dt > 1 saturation of the old linear gate)
+      if (Math.random() < 1 - Math.exp(-kd * dt)) {
         this._decomposeInitiator(i);
       }
     }
@@ -379,6 +408,8 @@ class Simulation {
         radius: 4,
       });
     }
+
+    this._pushEvent('init', 'I₂ → 2 I• (initiator decomposes)');
 
     this.calloutEvent = {
       title: 'Initiation: I₂ → 2 I•',
@@ -431,7 +462,7 @@ class Simulation {
         const dy = radical.y - monomer.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < captureDist && Math.random() < kCapture * dt) {
+        if (dist < captureDist && Math.random() < 1 - Math.exp(-kCapture * dt)) {
           // Convert to chain radical of length 1
           monomer.consumed = true;
           this.particles[ri] = {
@@ -444,6 +475,8 @@ class Simulation {
             vy: (Math.random() - 0.5) * 1.5,
             radius: 6,
           };
+          this._pushEvent('init', 'R• + M → RM• (radical captures first monomer)');
+
           this.calloutEvent = {
             title: 'Initiation: R• + M → RM•',
             drawFn: (ctx, w, h) => {
@@ -502,13 +535,15 @@ class Simulation {
         const dy = head.y - monomer.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < reactDist && Math.random() < kp * dt) {
+        if (dist < reactDist && Math.random() < 1 - Math.exp(-kp * dt)) {
           monomer.consumed = true;
           // Add monomer position as new head
           chain.segments.push({ x: monomer.x, y: monomer.y });
           const mob = this._chainMobility(chain.segments.length);
           chain.vx += (Math.random() - 0.5) * 0.5 * mob;
           chain.vy += (Math.random() - 0.5) * 0.5 * mob;
+          this._pushEvent('prop', `chain + M → longer chain (n=${chain.segments.length})`);
+
           this.calloutEvent = {
             title: `Propagation: chain + M (n=${chain.segments.length})`,
             drawFn: (ctx, w, h) => {
@@ -569,12 +604,13 @@ class Simulation {
         const dy = headA.y - headB.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist < termDist && Math.random() < kt * dt) {
+        if (dist < termDist && Math.random() < 1 - Math.exp(-kt * dt)) {
           terminated.add(ai);
           terminated.add(bi);
 
           // 50% combination, 50% disproportionation
-          if (Math.random() < 0.5) {
+          const byCombination = Math.random() < 0.5;
+          if (byCombination) {
             // Combination: join chains into one dead chain
             const combinedSegments = [
               ...chainA.segments,
@@ -604,6 +640,12 @@ class Simulation {
               radius: 5,
             });
           }
+
+          this._pushEvent('term',
+            byCombination
+              ? 'chain• + chain• → dead chain (combination)'
+              : 'chain• + chain• → 2 dead chains (disproportionation)'
+          );
 
           this.calloutEvent = {
             title: 'Termination',
@@ -645,12 +687,32 @@ class Simulation {
     const totalMonomerInit = this._initMonomerCount;
     const free = this.particles.filter(p => p.type === 'monomer' && !p.consumed).length;
     const consumed = totalMonomerInit - free;
-    const activeChains = this.particles.filter(p => p.type === 'chainRadical').length;
-    const deadChains = this.particles.filter(p => p.type === 'deadChain').length;
+
+    // Collect chain lengths (DP) for Mn/Mw/PDI
+    let sumDP = 0;     // Σ DP_i
+    let sumDP2 = 0;    // Σ DP_i²
+    let deadChains = 0;
+    let activeChains = 0;
+    for (const p of this.particles) {
+      if (p.type === 'chainRadical') {
+        activeChains++;
+      } else if (p.type === 'deadChain') {
+        deadChains++;
+        const dp = p.segments ? p.segments.length : 0;
+        sumDP += dp;
+        sumDP2 += dp * dp;
+      }
+    }
+
+    const mn = sumDP > 0 ? Math.round(sumDP / deadChains) : 0;
+    const mw = sumDP > 0 ? Math.round(sumDP2 / sumDP) : 0;
+    const pdi = (sumDP > 0 && deadChains > 1) ? (sumDP2 / sumDP) / (sumDP / deadChains) : 0;
 
     this.stats = {
       conversion: totalMonomerInit > 0 ? Math.round((consumed / totalMonomerInit) * 100) : 0,
-      mn: deadChains > 0 ? Math.round(consumed / deadChains) : 0,
+      mn,
+      mw,
+      pdi: pdi ? pdi : 0,
       activeChains,
       deadChains,
       freeMonomers: free,
@@ -670,6 +732,19 @@ class Simulation {
     // Remove consumed monomers from display
     this.particles = this.particles.filter(p => !(p.type === 'monomer' && p.consumed));
     this._updateStats();
+
+    // Sample conversion history at regular sim-time intervals
+    if (this.time - this._lastSampleT >= this._sampleInterval) {
+      this._conversionHistory.push({ t: this.time, p: this.stats.conversion });
+      this._lastSampleT = this.time;
+      if (this._conversionHistory.length > this._maxHistoryPoints) {
+        this._conversionHistory.shift();
+      }
+    }
+  }
+
+  getConversionHistory() {
+    return this._conversionHistory;
   }
 
   _chainMobility(chainLength) {
@@ -679,57 +754,86 @@ class Simulation {
   _moveParticles(dt) {
     const w = this._canvasW;
     const h = this._canvasH;
+    const D0 = 2.0;             // segment Brownian intensity per frame
+    const springK = 0.15;       // harmonic spring stiffness (stretchy)
+    const targetDist = 10.0;    // equilibrium bond length (px)
+    const springPasses = 2;     // relaxation iterations (fewer = looser chains)
 
     for (const p of this.particles) {
       if (p.type === 'monomer' && p.consumed) continue;
 
-      const mobility = (p.type === 'chainRadical' || p.type === 'deadChain')
-        ? this._chainMobility(p.segments.length)
-        : 1;
+      const isChain = p.type === 'chainRadical' || p.type === 'deadChain';
 
-      // Brownian perturbation — scaled by mobility
-      p.vx += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
-      p.vy += (Math.random() - 0.5) * 0.5 * Math.sqrt(mobility);
+      if (isChain) {
+        // ── Rouse bead-spring model ──
+        // Every segment gets independent Brownian motion.
+        // Adjacent segments connected by harmonic springs.
+        // CM diffusion ∝ 1/N emerges naturally — no manual mobility scaling.
+        const segs = p.segments;
+        const N = segs.length;
 
-      // Damping
-      p.vx *= 0.98;
-      p.vy *= 0.98;
+        if (N === 1) {
+          // Single segment — move like a free particle
+          p.vx += (Math.random() - 0.5) * 0.5;
+          p.vy += (Math.random() - 0.5) * 0.5;
+          p.vx *= 0.98; p.vy *= 0.98;
+          segs[0].x += p.vx * dt * 60;
+          segs[0].y += p.vy * dt * 60;
+        } else {
+          // Step 1: independent Brownian kicks to every segment
+          for (let i = 0; i < N; i++) {
+            segs[i].x += (Math.random() - 0.5) * D0;
+            segs[i].y += (Math.random() - 0.5) * D0;
+          }
 
-      // Speed cap — scaled by mobility
-      const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-      const maxSpeed = 3 * mobility;
-      if (speed > maxSpeed) {
-        p.vx = (p.vx / speed) * maxSpeed;
-        p.vy = (p.vy / speed) * maxSpeed;
-      }
+          // Step 2: spring relaxation between adjacent segments
+          for (let pass = 0; pass < springPasses; pass++) {
+            for (let i = 0; i < N - 1; i++) {
+              const a = segs[i], b = segs[i + 1];
+              let dx = b.x - a.x, dy = b.y - a.y;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+              const force = springK * (dist - targetDist);
+              dx /= dist; dy /= dist;
+              a.x += force * dx * 0.5;
+              a.y += force * dy * 0.5;
+              b.x -= force * dx * 0.5;
+              b.y -= force * dy * 0.5;
+            }
+          }
 
-      if (p.type === 'chainRadical' || p.type === 'deadChain') {
-        if (!p.segments || p.segments.length === 0) continue;
-        const head = p.segments[p.segments.length - 1];
-        head.x += p.vx * dt * 60;
-        head.y += p.vy * dt * 60;
-
-        // Bounce head off walls
-        if (head.x < 5) { head.x = 5; p.vx *= -0.5; }
-        if (head.x > w - 5) { head.x = w - 5; p.vx *= -0.5; }
-        if (head.y < 5) { head.y = 5; p.vy *= -0.5; }
-        if (head.y > h - 5) { head.y = h - 5; p.vy *= -0.5; }
-
-        // Body follows leader with lag
-        for (let i = 0; i < p.segments.length - 1; i++) {
-          const seg = p.segments[i];
-          const leader = p.segments[i + 1];
-          const dx = leader.x - seg.x;
-          const dy = leader.y - seg.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const targetDist = 10;
-          if (dist > targetDist) {
-            const ratio = (dist - targetDist) / dist;
-            seg.x += dx * ratio * 0.8;
-            seg.y += dy * ratio * 0.8;
+          // Step 3: residual CM drift (damped momentum)
+          p.vx += (Math.random() - 0.5) * 0.1;
+          p.vy += (Math.random() - 0.5) * 0.1;
+          p.vx *= 0.96; p.vy *= 0.96;
+          for (let i = 0; i < N; i++) {
+            segs[i].x += p.vx * dt * 15;
+            segs[i].y += p.vy * dt * 15;
           }
         }
+
+        // Wall bounce — all segments
+        for (let i = 0; i < segs.length; i++) {
+          const s = segs[i];
+          if (s.x < 5) s.x = 5;
+          if (s.x > w - 5) s.x = w - 5;
+          if (s.y < 5) s.y = 5;
+          if (s.y > h - 5) s.y = h - 5;
+        }
+
       } else {
+        // ── Free particles (monomers, initiators, primary radicals) ──
+        p.vx += (Math.random() - 0.5) * 0.5;
+        p.vy += (Math.random() - 0.5) * 0.5;
+        p.vx *= 0.98;
+        p.vy *= 0.98;
+
+        const speed = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        const maxSpeed = 3;
+        if (speed > maxSpeed) {
+          p.vx = (p.vx / speed) * maxSpeed;
+          p.vy = (p.vy / speed) * maxSpeed;
+        }
+
         p.x += p.vx * dt * 60;
         p.y += p.vy * dt * 60;
 
@@ -749,7 +853,12 @@ class Simulation {
   getStats() {
     return this.stats;
   }
+
+  getEventLog() {
+    return this._eventLog;
+  }
 }
+
 const THEME = {
   bgColor: '#0f0f23',
   colors: {
@@ -773,6 +882,7 @@ const THEME = {
   },
 };
 
+
 class UI extends UIBase {
   constructor() {
     super();
@@ -794,6 +904,8 @@ class UI extends UIBase {
       { id: 'ro-time',       key: 'time',         format: v => v.toFixed(1) + 's' },
       { id: 'ro-conversion', key: 'conversion',   format: v => v + '%' },
       { id: 'ro-mn',         key: 'mn',           format: v => v || '—' },
+      { id: 'ro-mw',         key: 'mw',           format: v => v || '—' },
+      { id: 'ro-pdi',        key: 'pdi',          format: v => (typeof v === 'number' && v > 0 ? v.toFixed(2) : '—') },
       { id: 'ro-chains',     key: 'activeChains', format: v => String(v) },
       { id: 'ro-dead',       key: 'deadChains',   format: v => String(v) },
       { id: 'ro-monomers',   key: 'freeMonomers',  format: v => String(v) },
@@ -845,6 +957,7 @@ class UI extends UIBase {
   }
 }
 
+
 const canvas = document.getElementById('sim-canvas');
 const sim = new Simulation();
 const renderer = new Renderer(canvas, THEME);
@@ -857,6 +970,170 @@ function syncSize() {
 let running = false;
 let lastTime = 0;
 let animId = null;
+
+function drawKineticsChart(ctx, w, h, history, sim) {
+  const padL = 44;
+  const padR = 14;
+  const padT = 22;
+  const padB = 24;
+  const chartW = w - padL - padR;
+  const chartH = h - padT - padB;
+  if (chartW <= 0 || chartH <= 0) return;
+
+  // Panel background
+  ctx.fillStyle = 'rgba(15, 15, 35, 0.82)';
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(78, 205, 196, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+
+  // Title
+  ctx.fillStyle = '#e8e8f0';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Conversion vs time', 8, 15);
+
+  // Axes
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, h - padB);
+  ctx.lineTo(w - padR, h - padB);
+  ctx.stroke();
+
+  // Y-axis label (0–100%)
+  ctx.fillStyle = 'rgba(200,200,220,0.75)';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('100%', padL - 4, padT + 4);
+  ctx.fillText('50%', padL - 4, padT + chartH / 2 + 3);
+  ctx.fillText('0%', padL - 4, h - padB + 3);
+
+  // Horizontal grid lines at 0, 50, 100
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  for (const pct of [50]) {
+    const y = padT + chartH * (1 - pct / 100);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(w - padR, y);
+    ctx.stroke();
+  }
+
+  // Determine time range for axes (keep expanding time domain)
+  let tMax = 0;
+  if (history.length > 1) {
+    tMax = history[history.length - 1].t;
+  }
+  if (tMax < 1) tMax = 1;
+
+  // X-axis label
+  ctx.fillStyle = 'rgba(200,200,220,0.75)';
+  ctx.textAlign = 'center';
+  ctx.fillText('time (s)', padL + chartW / 2, h - 6);
+
+  // Theoretical first-order curve: p(t) = 100 * (1 - exp(-k_eff * t))
+  // Estimate k_eff from current data, or use a default
+  let kEff = 0;
+  if (history.length > 5) {
+    // Fit by eye: pick the last p% point
+    const last = history[history.length - 1];
+    if (last.t > 0.5 && last.p > 0) {
+      const frac = Math.min(0.99, last.p / 100);
+      kEff = -Math.log(1 - frac) / last.t;
+    }
+  }
+  if (kEff <= 0) kEff = 0.3;
+
+  // Draw theoretical curve
+  ctx.strokeStyle = 'rgba(255, 107, 107, 0.7)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  const steps = 60;
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * tMax;
+    const p = 100 * (1 - Math.exp(-kEff * t));
+    const x = padL + (t / tMax) * chartW;
+    const y = padT + chartH * (1 - p / 100);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Observed conversion curve
+  if (history.length >= 2) {
+    ctx.strokeStyle = '#4ecdc4';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < history.length; i++) {
+      const t = history[i].t;
+      const p = history[i].p;
+      const x = padL + (t / tMax) * chartW;
+      const y = padT + chartH * (1 - p / 100);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Current value marker
+    const lastPt = history[history.length - 1];
+    const lx = padL + (lastPt.t / tMax) * chartW;
+    const ly = padT + chartH * (1 - lastPt.p / 100);
+    ctx.fillStyle = '#4ecdc4';
+    ctx.beginPath();
+    ctx.arc(lx, ly, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Legend
+  ctx.textAlign = 'left';
+  ctx.font = '10px sans-serif';
+  ctx.fillStyle = '#4ecdc4';
+  ctx.fillText('— observed', padL + 6, padT + 8);
+  ctx.strokeStyle = 'rgba(255, 107, 107, 0.9)';
+  ctx.beginPath();
+  ctx.moveTo(padL + 6, padT + 14);
+  ctx.lineTo(padL + 20, padT + 14);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255, 107, 107, 0.9)';
+  ctx.fillText('first-order model', padL + 24, padT + 16);
+}
+
+function drawChartOverlay(renderer, sim) {
+  const chartW = 230;
+  const chartH = 130;
+  const margin = 12;
+  const w = renderer.w;
+  const ctx = renderer.ctx;
+
+  const x = w - chartW - margin;
+  const y = margin;
+
+  ctx.save();
+  ctx.translate(x, y);
+  drawKineticsChart(ctx, chartW, chartH, sim.getConversionHistory(), sim);
+  ctx.restore();
+}
+
+function renderLabJournal(sim) {
+  const listEl = document.getElementById('lab-journal-list');
+  if (!listEl) return;
+  const log = sim.getEventLog();
+  if (!log || log.length === 0) {
+    listEl.innerHTML = '<li class="empty">waiting for events…</li>';
+    return;
+  }
+  // Render in reverse chronological order (most recent at the top)
+  const html = [];
+  for (let i = log.length - 1; i >= 0; i--) {
+    const ev = log[i];
+    const time = ev.t.toFixed(2) + 's';
+    html.push(`<li><span class="ev-time">${time}</span><span class="ev-${ev.kind}">${ev.text}</span></li>`);
+  }
+  listEl.innerHTML = html.join('');
+}
 
 function loop(timestamp) {
   if (!running) return;
@@ -876,6 +1153,8 @@ function loop(timestamp) {
   const { particles, stats } = sim.getState();
   stats.time = sim.time;
   renderer.draw(particles);
+  drawChartOverlay(renderer, sim);
+  renderLabJournal(sim);
   ui.updateReadouts(stats);
   ui.updateStageBadges({ ...stats, totalMonomers: sim.params.monomerCount });
 
@@ -903,9 +1182,10 @@ ui.on('reset', () => {
   stats.time = sim.time;
   syncSize();
   renderer.draw(particles);
+  drawChartOverlay(renderer, sim);
+  renderLabJournal(sim);
   ui.updateReadouts(stats);
   ui.updateStageBadges({ ...stats, totalMonomers: sim.params.monomerCount });
-  play();
 });
 ui.on('paramChange', (params) => {
   sim.setParams(params);
@@ -919,4 +1199,7 @@ sim.reset();
 const { particles, stats } = sim.getState();
 stats.time = sim.time;
 renderer.draw(particles);
+drawChartOverlay(renderer, sim);
+renderLabJournal(sim);
 ui.updateReadouts(stats);
+

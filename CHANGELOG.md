@@ -1,3 +1,10 @@
+## 2026-06-12
+
+- **Crosslinking polymerization simulator:** fourth simulator in the platform. 2EHA/AA copolymer (Mayo-Lewis) with concurrent bifunctional crosslinker bridging AA (-COOH) units across different chains. Rouse bead-spring model with additional crosslink spring forces. Union-Find gel point detection. Four application presets: PSA (1% XL), SAP (10%), Hard Coating (30%), Hydrogel (5%). Three stage badges (Copolymerization/Crosslinking/Gelation). Rose-colored crosslink bridges with glow. Crosslink density vs conversion diagram. Lab journal with xlink event type.
+- **Renderer enhancements:** glow system made data-driven (`glowColors[type]` instead of hardcoded type check), `segmentColor` callback now receives segment object as 3rd argument for `isCrosslinked` detection, `_colorForParticle` also passes head segment.
+- **Landing page:** added 4th sim card with rose accent, staggered animation at 0.55s.
+- **CLAUDE.md rewritten**: updated to reflect all post-2026-05 changes — corrected r₁/r₂ values (0.41/0.15), documented alternating mode, chain transfer, stage badges, lab journal, kinetics chart, Mayo-Lewis diagram, Carothers chart, bond rendering, and the CSS redesign. Removed MCP demo (learning exercise — concluded MCP is overkill for this project's needs).
+
 ## 2026-06-10
 
 - **Step-growth condensation simulator:** AA + BB kinetics with diamine (copper) and diacid (cobalt) monomers. Any particle with free ends can react with any other — fundamentally different from chain-growth. Features Carothers equation (DP = 1/(1-p)), stoichiometric imbalance control, live DP-vs-conversion chart, and byproduct (H₂O) particle emission. Third simulator in the platform.

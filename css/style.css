@@ -202,6 +202,64 @@ body {
   height: auto;
 }
 
+#lab-journal {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  width: 260px;
+  background: var(--bg-panel);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  z-index: 5;
+  font-family: var(--font-ui);
+}
+
+#lab-journal-title {
+  font-size: 0.65rem;
+  color: var(--copper);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+#lab-journal-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.72rem;
+  color: #ddd9e0;
+  line-height: 1.5;
+}
+
+#lab-journal-list li {
+  padding: 2px 0;
+  border-bottom: 1px dashed rgba(255,255,255,0.06);
+}
+
+#lab-journal-list li:last-child {
+  border-bottom: none;
+}
+
+#lab-journal-list .ev-time {
+  display: inline-block;
+  color: #888;
+  width: 42px;
+  font-variant-numeric: tabular-nums;
+}
+
+#lab-journal-list .ev-init { color: #ffd93d; }
+#lab-journal-list .ev-prop { color: #4ecdc4; }
+#lab-journal-list .ev-term { color: #ff6b6b; }
+#lab-journal-list .ev-xlink { color: #5fff5f; }
+
+#lab-journal-list li.empty {
+  color: #666;
+  font-style: italic;
+}
+
 /* ── Panel ── */
 #panel {
   width: 240px;
@@ -560,6 +618,7 @@ select:hover, select:focus {
 .sim-card:nth-child(1) { animation-delay: 0.1s; }
 .sim-card:nth-child(2) { animation-delay: 0.25s; }
 .sim-card:nth-child(3) { animation-delay: 0.4s; }
+.sim-card:nth-child(4) { animation-delay: 0.55s; }
 
 @keyframes cardFadeIn {
   to { opacity: 1; transform: translateY(0); }
@@ -607,3 +666,44 @@ select:hover, select:focus {
 .card-stepgrowth .sim-card-footer {
   color: var(--amber);
 }
+
+.card-crosslink .sim-card-accent {
+  background: var(--rose);
+  box-shadow: 0 0 12px rgba(217, 74, 106, 0.15);
+}
+
+.card-crosslink::before {
+  background: radial-gradient(ellipse at 30% 20%, rgba(217, 74, 106, 0.06), transparent 70%);
+}
+
+.card-crosslink .sim-card h2 {
+  color: var(--rose);
+}
+
+.card-crosslink .sim-card-footer {
+  color: var(--rose);
+}
+
+/* ── Aziridine card (5th sim) — emerald accent ── */
+.card-aziridine .sim-card-accent {
+  background: #4ade80;
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.18);
+}
+
+.card-aziridine::before {
+  background: radial-gradient(ellipse at 30% 20%, rgba(74, 222, 128, 0.07), transparent 70%);
+}
+
+.card-aziridine:hover {
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.card-aziridine .sim-card h2 {
+  color: #4ade80;
+}
+
+.card-aziridine .sim-card-footer {
+  color: #4ade80;
+}
+
+.sim-card:nth-child(5) { animation-delay: 0.7s; }
