@@ -1,4 +1,6 @@
 .claude/settings.local.json
+.claude/settings.json
+ppt_build/
 node_modules/
 package.json
 package-lock.json
